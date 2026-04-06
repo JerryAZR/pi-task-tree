@@ -221,7 +221,6 @@ export function loadFromDump(content: string): { lastCompletedIndex: string | nu
   const { tasks: taskMap, rootList } = buildTreeFromTasks(persistedTasks);
 
   // Ensure root task exists - it may be missing if the persistence file
-  // was malformed or only contained metadata (no task lines)
   if (!taskMap.has(ROOT_INDEX)) {
     const rootTask: Task = {
       index: ROOT_INDEX,
@@ -618,31 +617,11 @@ export function createTaskManager(): ITaskManager {
         task = findTaskByTitle(tasks, query);
       }
 
-      // Get parent task
-      const parentIndex = task.parentIndex;
-      let parent: Task | undefined;
-
-      if (parentIndex && parentIndex !== "") {
-        parent = tasks.get(parentIndex);
-      }
-
-      // Get parent's children TaskList (must exist for valid task)
-      // Root task has parentIndex === "", use store.rootList in that case
-      const parentChildren = (!parentIndex || parentIndex === ROOT_INDEX)
-        ? store.rootList
-        : tasks.get(parentIndex)!.children!;
-
-      if (parentChildren.groups.length === 0) {
-        return { task, parent, previousGroup: [], currentGroup: [], nextGroup: [] };
-      }
-
-      const groups = parentChildren.groups;
-
-      // Root task has groupIndex: -1 and represents all root-level tasks
-      // Return all children as current group with no previous/next
+      // Root task: return early with all root-level children
       if (task.index === ROOT_INDEX) {
         const getTasksFromIndices = (indices: string[]): Task[] =>
           indices.map(idx => tasks.get(idx)!).filter(Boolean);
+        const groups = store.rootList.groups;
         return {
           task,
           parent: undefined,
@@ -654,7 +633,21 @@ export function createTaskManager(): ITaskManager {
         };
       }
 
-      // Use task's groupIndex to locate groups
+      // Non-root tasks must have a valid parent
+      const parent = tasks.get(task.parentIndex);
+      if (!parent) {
+        throw new Error(
+          `INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found. ` +
+          `All non-root tasks must have a valid parent.`
+        );
+      }
+
+      const parentChildren = parent.children;
+      if (!parentChildren || parentChildren.groups.length === 0) {
+        return { task, parent, previousGroup: [], currentGroup: [], nextGroup: [] };
+      }
+
+      const groups = parentChildren.groups;
       const taskGroupIndex = task.groupIndex;
 
       // Validate groupIndex is valid
