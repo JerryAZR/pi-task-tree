@@ -1,0 +1,28 @@
+{
+  "name": "pi-task-tree",
+  "version": "0.1.0",
+  "description": "Nested task list with parallel groups and focus mode for pi",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.3.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/test/**/*.test.ts"],
+    "moduleFileExtensions": ["ts", "js"],
+    "collectCoverageFrom": ["src/**/*.ts"]
+  },
+  "keywords": ["pi", "task", "tree", "nested", "todo"],
+  "license": "MIT"
+}
