@@ -216,23 +216,12 @@ function saveToFile(lastCompletedIndex: string | null, tasks: Map<string, Task>)
 }
 
 // Load state from dump string (for testing without file I/O)
+// Note: root task is NOT created here - it will always be created in createTaskManager
+// since the root task is never persisted
+
 export function loadFromDump(content: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } {
   const { meta, tasks: persistedTasks } = parseDump(content);
   const { tasks: taskMap, rootList } = buildTreeFromTasks(persistedTasks);
-
-  // Ensure root task exists - it may be missing if the persistence file
-  if (!taskMap.has(ROOT_INDEX)) {
-    const rootTask: Task = {
-      index: ROOT_INDEX,
-      parentIndex: "",
-      title: "Root",
-      status: "ready",
-      groupIndex: -1,
-      children: rootList,
-    };
-    taskMap.set(ROOT_INDEX, rootTask);
-  }
-
   return { lastCompletedIndex: meta.lastCompletedIndex, tasks: taskMap, rootList };
 }
 
@@ -476,12 +465,24 @@ function unblockNextGroup(task: Task, store: TaskStore, tasks: Map<string, Task>
   }
 }
 
+// Create the synthetic root task
+function createRootTask(rootList: TaskList): Task {
+  return {
+    index: ROOT_INDEX,
+    parentIndex: "",
+    title: "Root",
+    status: "ready",
+    groupIndex: -1,
+    children: rootList,
+  };
+}
+
 export function createTaskManager(): ITaskManager {
   // Skip persistence during tests
   const isTest = process.env.NODE_ENV === "test";
 
   // Load persisted state (skip during tests)
-  // Tree is reconstructed in DFS order during load
+  // Root task is NOT loaded from file - it will always be created fresh
   const loaded = isTest ? null : loadFromFile();
   let lastCompletedIndex: string | null = loaded?.lastCompletedIndex ?? null;
 
@@ -492,18 +493,13 @@ export function createTaskManager(): ITaskManager {
     tasks = loaded.tasks;
     rootList = loaded.rootList;
   } else {
-    // Initialize with empty root
     rootList = emptyTaskList();
-    const rootTask: Task = {
-      index: ROOT_INDEX,
-      parentIndex: "",
-      title: "Root",
-      status: "ready",
-      groupIndex: -1,
-      children: rootList,
-    };
-    tasks = new Map([[ROOT_INDEX, rootTask]]);
+    tasks = new Map();
   }
+
+  // Always create root task (never persisted, always synthetic)
+  const rootTask = createRootTask(rootList);
+  tasks.set(ROOT_INDEX, rootTask);
 
   // TaskStore implementation
   const store: TaskStore = {
@@ -644,7 +640,10 @@ export function createTaskManager(): ITaskManager {
 
       const parentChildren = parent.children;
       if (!parentChildren || parentChildren.groups.length === 0) {
-        return { task, parent, previousGroup: [], currentGroup: [], nextGroup: [] };
+        throw new Error(
+          `INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" does not own this task. ` +
+          `All non-root tasks must be tracked by their parents.`
+        );
       }
 
       const groups = parentChildren.groups;
