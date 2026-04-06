@@ -466,11 +466,14 @@ function unblockNextGroup(task: Task, store: TaskStore, tasks: Map<string, Task>
 }
 
 // Create the synthetic root task
+// This task is never persisted and serves as the parent of all root-level tasks.
+// Tool callers should not see or modify this task during normal usage.
 function createRootTask(rootList: TaskList): Task {
   return {
     index: ROOT_INDEX,
     parentIndex: "",
     title: "Root",
+    description: "Synthetic root task - parent of all root-level tasks. Do not modify.",
     status: "ready",
     groupIndex: -1,
     children: rootList,
