@@ -1,6 +1,6 @@
 // Core types for nested-todo
 
-export const ROOT_INDEX = "root";  // Synthetic root, parent of all top-level tasks
+export const ROOT_INDEX = "root";  // Synthetic root, parent of all root-level tasks (same for all roots)
 
 export type TaskStatus = "pending" | "ready" | "completed";
 
@@ -27,7 +27,7 @@ export interface Task {
 export interface ParallelGroup {
   label?: string;             // Original parallelGroup label (for reference only)
   taskIndices: string[];       // Task indices belonging to this group
-  isComplete: boolean;        // All tasks in group are completed
+  isComplete: boolean;        // All tasks in group are complete
 }
 
 // TaskList - all children under a parent
@@ -44,6 +44,19 @@ export interface TaskStore {
   getTask(index: string): Task | undefined;  // Convenience lookup
 }
 
+// Root list management types
+export interface Root {
+  id: string;           // Unique identifier (timestamp-based)
+  title: string;        // Display name
+  description?: string; // Optional description
+  createdAt: number;    // Unix timestamp
+}
+
+export interface RootsManifest {
+  roots: Root[];
+  activeId: string | null;  // ID of active root, null if none
+}
+
 // API input/output types
 // Note: index is auto-generated, not provided by caller
 export interface CreateListItem {
@@ -52,10 +65,35 @@ export interface CreateListItem {
   parallelGroup?: string;
 }
 
-export interface task_create_list {
+export interface task_create_root {
+  title: string;
+  description?: string;
+  items: CreateListItem[];  // Required - initial tasks for the root list
+}
+
+export interface task_create_root_result {
+  root: Root;
+  rootProgress: Progress;
+}
+
+// task_breakdown - add tasks under existing parent (requires active root)
+export interface task_breakdown {
   items: CreateListItem[];
-  parent?: string | null;
+  parent: string;  // Required - parent task index
   mode?: "new" | "append" | "override";
+}
+
+export interface task_list_roots_result {
+  roots: Root[];
+  activeId: string | null;
+}
+
+export interface task_activate_root {
+  id: string;
+}
+
+export interface task_delete_root {
+  id: string;
 }
 
 export interface task_get {
@@ -107,8 +145,17 @@ export interface TaskManager {
   getState(): TaskStore;
   getTaskStatus(index: string): TaskStatus | undefined;
   
-  // Operations
-  createList(params: task_create_list): task_list_result;
+  // Root management
+  createRoot(params: task_create_root): task_create_root_result;
+  breakdown(params: task_breakdown): task_list_result;
+  listRoots(): task_list_roots_result;
+  activateRoot(params: task_activate_root): task_list_roots_result;
+  deleteRoot(params: task_delete_root): task_list_roots_result;
+  
+  // Legacy operation (for backward compat during transition)
+  createList(params: { items: CreateListItem[]; parent?: string | null; mode?: CreateMode }): task_list_result;
+  
+  // Task operations
   get(params: task_get): task_get_result;
   update(params: task_update): task_update_result;
   complete(params: task_complete): task_complete_result;

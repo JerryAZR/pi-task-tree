@@ -2,13 +2,14 @@
  * Task Tree Extension - Nested task list with parallel groups and focus mode
  *
  * Features:
- * - task_create_list: Create tasks with indices and parallel groups
- * - task_get: Query task details with group context
+ * - task_create_root: Create a new named task list (root)
+ * - task_breakdown: Add tasks under an existing parent
  * - task_update: Update task title/description
  * - task_complete: Mark task completed (with unblocking logic)
  * - task_list: List tasks in focus or full mode
+ * - task_get: Query task details with group context
  *
- * State is persisted to `.task-tree.jsonl` in the project directory.
+ * State is persisted to .pi/task_tree/ in the project directory.
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -17,19 +18,11 @@ import { Type } from "@sinclair/typebox";
 
 import { createTaskManager, type TaskManager } from "./src/task-manager";
 import type {
-  task_create_list,
-  task_get,
-  task_get_result,
-  task_update,
-  task_complete,
-  task_list,
-  task_list_result,
   Task,
 } from "./src/types";
 import { TaskTreeError } from "./src/errors";
 
 // TypeBox schemas for LLM parameters
-// Note: task indices are auto-generated, not provided by callers
 const CreateListItemSchema = Type.Object({
   title: Type.String({ description: "Short task title" }),
   description: Type.Optional(Type.String({ description: "Detailed task description" })),
@@ -38,13 +31,18 @@ const CreateListItemSchema = Type.Object({
   })),
 });
 
-const TaskCreateListParams = Type.Object({
-  items: Type.Array(CreateListItemSchema, { description: "Tasks to create in order. Indices are auto-generated based on position." }),
-  parent: Type.Optional(Type.String({
-    description: "Parent task index to add subtasks under. Use the index shown in list results. Omit for root level tasks."
-  })),
+const TaskCreateRootParams = Type.Object({
+  title: Type.String({ description: "Title for this task list" }),
+  description: Type.Optional(Type.String({ description: "Optional description for the task list" })),
+  items: Type.Array(CreateListItemSchema, { description: "Initial tasks for this list (required)" }),
+});
+
+const TaskBreakdownParams = Type.Object({
+  items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
+  parent: Type.String({ description: "Parent task index to add subtasks under (e.g., '1' or '1.2')" }),
   mode: Type.Optional(StringEnum(["new", "append", "override"] as const, {
-    description: "Creation mode: new (default, fails if children exist), append (adds to existing), override (replaces existing)" })),
+    description: "Mode: new (fails if children exist), append (adds), override (replaces)"
+  })),
 });
 
 const TaskGetParams = Type.Object({
@@ -69,18 +67,12 @@ const TaskListParams = Type.Object({
 // Response formatting (LLM-friendly plain text)
 // ============================================================================
 
-/**
- * Format a single task as brief line: "index - title [status]"
- */
 function formatTaskBrief(task: Task): string {
   const statusIcon = task.status === "completed" ? "[x]" : task.status === "ready" ? "[ ]" : "[...]";
   const group = task.groupIndex >= 0 ? ` group:${task.groupIndex}` : "";
   return `${task.index} ${statusIcon} ${task.title}${group}`;
 }
 
-/**
- * Format a task for get result (detailed): shows all fields
- */
 function formatTaskDetail(task: Task, indent = ""): string {
   const lines: string[] = [];
   lines.push(`${indent}index:    ${task.index}`);
@@ -95,13 +87,8 @@ function formatTaskDetail(task: Task, indent = ""): string {
   return lines.join("\n");
 }
 
-/**
- * Format list result as indented tree
- */
-function formatListResult(result: task_list_result, showChildren = true): string {
+function formatListResult(result: { tree: Task[]; rootProgress: { completed: number; total: number } }, showChildren = true): string {
   const lines: string[] = [];
-
-  // Header with progress
   lines.push(`Tasks: ${result.rootProgress.completed}/${result.rootProgress.total} completed`);
   lines.push("");
 
@@ -114,7 +101,6 @@ function formatListResult(result: task_list_result, showChildren = true): string
     const indent = "  ".repeat(depth);
     lines.push(`${indent}${formatTaskBrief(t)}`);
 
-    // Show children inline if present
     if (showChildren && t.children && t.children.tasks.length > 0) {
       for (const child of t.children.tasks) {
         formatTask(child, depth + 1);
@@ -129,10 +115,7 @@ function formatListResult(result: task_list_result, showChildren = true): string
   return lines.join("\n");
 }
 
-/**
- * Format get result (detailed)
- */
-function formatGetResult(result: task_get_result): string {
+function formatGetResult(result: { task: Task; parent?: Task; previousGroup: Task[]; currentGroup: Task[]; nextGroup: Task[] }): string {
   const lines: string[] = [];
 
   lines.push("Task:");
@@ -185,8 +168,7 @@ export default function (pi: ExtensionAPI) {
     return manager;
   }
 
-  pi.on("session_start", async (event: { reason: string }, _ctx: ExtensionContext) => {
-    // reason: "startup" | "reload" | "new" | "resume" | "fork"
+  pi.on("session_start", async (_event: { reason: string }, _ctx: ExtensionContext) => {
     manager = createTaskManager();
   });
   pi.on("session_tree", async (_event: unknown, _ctx: ExtensionContext) => {
@@ -202,20 +184,6 @@ export default function (pi: ExtensionAPI) {
     throw error;
   }
 
-  function normalizeCreateListInput(params: { items?: unknown; parent?: unknown; mode?: unknown }): task_create_list {
-    if (!params.items || !Array.isArray(params.items)) {
-      throw new TaskTreeError("INVALID_INPUT", "items array is required");
-    }
-
-    const parent = params.parent === null || params.parent === "" ? undefined : params.parent as string | undefined;
-
-    return {
-      items: params.items as task_create_list["items"],
-      parent,
-      mode: params.mode as task_create_list["mode"],
-    };
-  }
-
   function normalizeIndexOrTitle(input: unknown): string {
     if (input === null || input === undefined || input === "") {
       throw new TaskTreeError("INVALID_INPUT", "Task index or title is required");
@@ -223,37 +191,81 @@ export default function (pi: ExtensionAPI) {
     return String(input).trim();
   }
 
-  // task_create_list
+  // task_create_root
   pi.registerTool({
-    name: "task_create_list",
-    label: "Task Create List",
-    description: "Create, extend, or override a hierarchical task list.",
-    promptSnippet: "Manage a task list for TODO items",
+    name: "task_create_root",
+    label: "Task Create Root",
+    description: "Create a new named task list (root). Each root is a separate workspace.",
+    promptSnippet: "Create a new task list for planning",
     promptGuidelines: [
-      "Use this tool to organize multi-step tasks before taking actions",
-      "Also use this tool to breakdown a complex task into multiple subtasks",
-      "Subtasks under the same parent run sequentially unless tagged with parallelGroup",
-      "Use 'new' mode to create a fresh list under the selected parent task",
-      "Use 'append' mode to add tasks to an existing list",
-      "Use 'override' mode to replace any task list under the selected parent",
-      "Use 'override' mode with an empty task list as input to delete an old list"
+      "Use this tool to start a new planning session",
+      "Provide a descriptive title for the plan",
+      "Include initial tasks to break down the work"
     ],
-    parameters: TaskCreateListParams,
+    parameters: TaskCreateRootParams,
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const normalized = normalizeCreateListInput(params as { items?: unknown; parent?: unknown; mode?: unknown });
-        const count = normalized.items.length;
-
-        if (count === 0) {
-          getManager().createList(normalized);
-          return { content: [{ type: "text", text: `Cleared children under ${normalized.parent ?? "root"}` }] };
+        const p = params as { title?: unknown; description?: unknown; items?: unknown };
+        
+        if (!p.title || typeof p.title !== "string") {
+          throw new TaskTreeError("INVALID_INPUT", "title is required");
         }
+        
+        if (!Array.isArray(p.items) || p.items.length === 0) {
+          throw new TaskTreeError("INVALID_INPUT", "items array with at least one task is required");
+        }
+        
+        const result = getManager().createRoot({
+          title: p.title.trim(),
+          description: typeof p.description === "string" ? p.description.trim() : undefined,
+          items: p.items as { title: string; description?: string; parallelGroup?: string }[],
+        });
 
-        getManager().createList(normalized);
+        const text = `Created task list: ${result.root.title}\n\n${formatListResult(result)}`;
+        return { content: [{ type: "text", text }] };
+      } catch (error) {
+        return handleError(error);
+      }
+    },
+  });
+
+  // task_breakdown
+  pi.registerTool({
+    name: "task_breakdown",
+    label: "Task Breakdown",
+    description: "Add subtasks under an existing parent task. Requires an active task list.",
+    promptSnippet: "Break down tasks into subtasks",
+    promptGuidelines: [
+      "Use this tool to break down complex tasks into smaller steps",
+      "Specify the parent task index to add subtasks under",
+      "Tasks are auto-indexed based on position"
+    ],
+    parameters: TaskBreakdownParams,
+
+    async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
+      try {
+        const p = params as { items?: unknown; parent?: unknown; mode?: unknown };
+        
+        if (!Array.isArray(p.items)) {
+          throw new TaskTreeError("INVALID_INPUT", "items array is required");
+        }
+        
+        if (!p.parent || typeof p.parent !== "string") {
+          throw new TaskTreeError("INVALID_INPUT", "parent (task index) is required");
+        }
+        
+        const count = p.items.length;
+        const result = getManager().breakdown({
+          items: p.items as { title: string; description?: string; parallelGroup?: string }[],
+          parent: p.parent.trim(),
+          mode: p.mode as "new" | "append" | "override" | undefined,
+        });
+
         const text = count === 1
-          ? `Created: ${normalized.items[0].index} ${normalized.items[0].title}`
-          : `Created ${count} tasks: ${normalized.items.map(i => i.index).join(", ")}`;
+          ? `Added 1 task under ${p.parent}`
+          : `Added ${count} tasks under ${p.parent}`;
+        
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);
@@ -274,8 +286,8 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const indexOrTitle = normalizeIndexOrTitle((params as { indexOrTitle?: unknown }).indexOrTitle);
-        const result = getManager().get({ query: indexOrTitle });
+        const query = normalizeIndexOrTitle((params as { indexOrTitle?: unknown }).indexOrTitle);
+        const result = getManager().get({ query });
         return { content: [{ type: "text", text: formatGetResult(result) }] };
       } catch (error) {
         return handleError(error);
@@ -297,7 +309,7 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
         const p = params as { index?: unknown; title?: unknown; description?: unknown };
-        const index = normalizeQueryInput(p.index);
+        const index = normalizeIndexOrTitle(p.index);
         const description = p.description === null ? null : p.description as string | undefined;
         const result = getManager().update({ index, title: p.title as string | undefined, description });
         return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }] };
@@ -320,7 +332,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const index = normalizeQueryInput((params as { index?: unknown }).index);
+        const index = normalizeIndexOrTitle((params as { index?: unknown }).index);
         const result = getManager().complete({ index });
         const text = `Completed ${index}\n\n${formatListResult(result, false)}`;
         return { content: [{ type: "text", text }] };
@@ -338,15 +350,15 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
       "Use this tool to understand the progress made in this project",
-      "Use 'focus' mode to get a partial tree view centered on recent work, surfacing upcoming tasks",
-      "Use 'full' mode to get the complete tree view of all planned tasks"
+      "Use 'focus' mode to view the recently completed or unblocked tasks",
+      "Use 'full' mode to view the complete tree of all planned tasks"
     ],
     parameters: TaskListParams,
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
         const m = getManager();
-        const result = m.list((params ?? { mode: "focus" }) as task_list);
+        const result = m.list((params ?? { mode: "focus" }) as { mode?: string });
         return { content: [{ type: "text", text: formatListResult(result) }] };
       } catch (error) {
         return handleError(error);

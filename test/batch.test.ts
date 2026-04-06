@@ -74,22 +74,24 @@ describe("Batch Randomized Testing", () => {
 
   test("fuzzing with state comparison", () => {
     // Fixed initial state
-    manager.createList({
+    manager.createRoot({
+      title: "Plan",
       items: [
         { title: "Root 1" },
         { title: "Root 2" },
         { title: "Root 3" },
       ],
-      parent: null,
     });
-    manager.createList({
+
+    manager.breakdown({
       items: [
         { title: "Child 1" },
         { title: "Child 2" },
       ],
       parent: "1",
     });
-    manager.createList({
+
+    manager.breakdown({
       items: [{ title: "Child" }],
       parent: "2",
     });
@@ -162,21 +164,18 @@ describe("Batch Randomized Testing", () => {
         expect(after.tasks).toEqual(before.tasks);
       }
 
-      // Successful writes should change something
-      // (We don't assert state changed because completing already-completed task throws)
-
       checkInvariants();
     }
   });
 
   test("fuzzing invalid inputs", () => {
     // Fixed initial state
-    manager.createList({
+    manager.createRoot({
+      title: "Plan",
       items: [
         { title: "Root 1" },
         { title: "Root 2" },
       ],
-      parent: null,
     });
     checkInvariants();
 
@@ -184,7 +183,7 @@ describe("Batch Randomized Testing", () => {
 
     for (let i = 0; i < iterations; i++) {
       const before = snapshotState();
-      const op = Math.floor(Math.random() * 4);
+      const op = Math.floor(Math.random() * 3);
 
       expect(() => {
         switch (op) {
@@ -196,12 +195,6 @@ describe("Batch Randomized Testing", () => {
             break;
           case 2:
             manager.get({ query: "nonexistent" });
-            break;
-          case 3:
-            manager.createList({
-              items: [{ title: "New task" }], // with existing tasks, this will throw LIST_EXISTS
-              parent: null,
-            });
             break;
         }
       }).toThrow(TaskTreeError);

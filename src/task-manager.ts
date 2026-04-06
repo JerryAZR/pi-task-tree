@@ -1,7 +1,7 @@
 // TaskManager - Core implementation for nested-todo
-// In-memory TaskStore with file persistence
+// Multi-root support with per-root persistence
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
   Task,
@@ -11,7 +11,13 @@ import type {
   TaskStore,
   TaskList,
   ParallelGroup,
-  task_create_list,
+  CreateListItem,
+  RootsManifest,
+  Root,
+  task_create_root,
+  task_breakdown,
+  task_activate_root,
+  task_delete_root,
   task_get,
   task_get_result,
   task_update,
@@ -24,11 +30,13 @@ import type {
 import { ROOT_INDEX } from "./types";
 import { ERRORS } from "./errors";
 
-// Persistence directory and file (relative to cwd)
+// Persistence directories (relative to cwd)
 const PERSISTENCE_DIR = ".pi/task_tree";
-const PERSISTENCE_FILE = "state.jsonl";
+const LISTS_DIR = "lists";
+const ROOTS_FILE = "roots.jsonl";
 
-// Persistence format: JSONL
+// Persistence format for roots: JSON
+// Persistence format for tasks: JSONL
 // Line 1: metadata (version, lastCompletedIndex)
 // Remaining lines: one task per line
 
@@ -49,8 +57,47 @@ interface PersistedTask {
 
 const PERSISTENCE_VERSION = 1;
 
-function getPersistencePath(): string {
-  return resolve(process.cwd(), PERSISTENCE_DIR, PERSISTENCE_FILE);
+// ============================================================================
+// Persistence helpers
+// ============================================================================
+
+function getRootsPath(): string {
+  return resolve(process.cwd(), PERSISTENCE_DIR, ROOTS_FILE);
+}
+
+function getListPath(id: string): string {
+  return resolve(process.cwd(), PERSISTENCE_DIR, LISTS_DIR, `${id}.jsonl`);
+}
+
+function getListsDir(): string {
+  return resolve(process.cwd(), PERSISTENCE_DIR, LISTS_DIR);
+}
+
+// Ensure directories exist
+function ensurePersistenceDir(): void {
+  mkdirSync(resolve(process.cwd(), PERSISTENCE_DIR), { recursive: true });
+  mkdirSync(getListsDir(), { recursive: true });
+}
+
+// Load roots manifest
+function loadRootsManifest(): RootsManifest {
+  const path = getRootsPath();
+  if (!existsSync(path)) {
+    return { roots: [], activeId: null };
+  }
+  try {
+    const content = readFileSync(path, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return { roots: [], activeId: null };
+  }
+}
+
+// Save roots manifest
+function saveRootsManifest(manifest: RootsManifest): void {
+  ensurePersistenceDir();
+  const path = getRootsPath();
+  writeFileSync(path, JSON.stringify(manifest, null, 2), "utf-8");
 }
 
 // Parse JSONL dump string into metadata + task map
@@ -76,13 +123,11 @@ function parseDump(content: string): { meta: PersistedMeta; tasks: Map<string, P
 function dumpState(lastCompletedIndex: string | null, tasks: Map<string, Task>): string {
   const lines: string[] = [];
 
-  // Line 1: metadata
   lines.push(JSON.stringify({
     version: PERSISTENCE_VERSION,
     lastCompletedIndex,
   }));
 
-  // DFS traversal to write tasks in order
   const rootList = getRootList(tasks);
   if (rootList) {
     function dfsChildren(taskList: TaskList) {
@@ -107,6 +152,36 @@ function dumpState(lastCompletedIndex: string | null, tasks: Map<string, Task>):
   return lines.join("\n");
 }
 
+// Load task state from file
+function loadTasksFromFile(id: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } | null {
+  const path = getListPath(id);
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const content = readFileSync(path, "utf-8");
+    return loadFromDump(content);
+  } catch (err) {
+    console.error(`[nested-todo] Failed to load state from ${path}:`, err);
+    return null;
+  }
+}
+
+// Save task state to file
+function saveTasksToFile(id: string, lastCompletedIndex: string | null, tasks: Map<string, Task>): void {
+  ensurePersistenceDir();
+  const path = getListPath(id);
+  writeFileSync(path, dumpState(lastCompletedIndex, tasks), "utf-8");
+}
+
+// Delete task state file
+function deleteTasksFile(id: string): void {
+  const path = getListPath(id);
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+}
+
 // Reconstruct groups from stored groupIndex (source of truth)
 function reconstructGroups(tasks: Task[]): ParallelGroup[] {
   const groups = new Map<number, Task[]>();
@@ -123,7 +198,6 @@ function reconstructGroups(tasks: Task[]): ParallelGroup[] {
     const groupTasks = groups.get(pos)!;
     groupTasks.sort((a, b) => a.index.localeCompare(b.index, undefined, { numeric: true }));
     return {
-      position: pos,
       label: groupTasks[0]?.groupLabel,
       taskIndices: groupTasks.map(t => t.index),
       isComplete: groupTasks.every(t => t.status === "completed"),
@@ -140,21 +214,18 @@ function emptyTaskList(): TaskList {
 function buildTreeFromTasks(persistedTasks: Map<string, PersistedTask>): { tasks: Map<string, Task>; rootList: TaskList } {
   const taskMap = new Map<string, Task>();
 
-  // Recursive builder - predict next child index, try map lookup, stop on miss
-  // Root children: "1", "2", "3" (no prefix)
-  // Other children: "parent.1", "parent.2", "parent.3"
   function buildSubtree(parentIndex: string): TaskList {
     const result: Task[] = [];
     let childSuffix = 1;
 
     while (true) {
       const childIndex = parentIndex === ROOT_INDEX
-        ? String(childSuffix)  // Root: "1", "2", "3"
-        : `${parentIndex}.${childSuffix}`;  // Others: "parent.1", "parent.2"
+        ? String(childSuffix)
+        : `${parentIndex}.${childSuffix}`;
 
       const pTask = persistedTasks.get(childIndex);
       if (!pTask) {
-        break;  // No more children
+        break;
       }
 
       const task: Task = {
@@ -169,7 +240,6 @@ function buildTreeFromTasks(persistedTasks: Map<string, PersistedTask>): { tasks
 
       taskMap.set(task.index, task);
 
-      // Recursively build children
       const childList = buildSubtree(pTask.index);
       if (childList.tasks.length > 0) {
         task.children = childList;
@@ -185,40 +255,11 @@ function buildTreeFromTasks(persistedTasks: Map<string, PersistedTask>): { tasks
     };
   }
 
-  // Start from root - find root-level children (indices "1", "2", "3", ...)
   const rootList = buildSubtree(ROOT_INDEX);
-
   return { tasks: taskMap, rootList };
 }
 
-function loadFromFile(): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } | null {
-  const path = getPersistencePath();
-  if (!existsSync(path)) {
-    return null;
-  }
-  try {
-    const content = readFileSync(path, "utf-8");
-    return loadFromDump(content);
-  } catch (err) {
-    console.error(`[nested-todo] Failed to load state from ${path}:`, err);
-    return null;
-  }
-}
-
-function saveToFile(lastCompletedIndex: string | null, tasks: Map<string, Task>): void {
-  const path = getPersistencePath();
-  try {
-    mkdirSync(resolve(process.cwd(), PERSISTENCE_DIR), { recursive: true });
-    writeFileSync(path, dumpState(lastCompletedIndex, tasks), "utf-8");
-  } catch (err) {
-    console.error(`[nested-todo] Failed to save state to ${path}:`, err);
-  }
-}
-
 // Load state from dump string (for testing without file I/O)
-// Note: root task is NOT created here - it will always be created in createTaskManager
-// since the root task is never persisted
-
 export function loadFromDump(content: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } {
   const { meta, tasks: persistedTasks } = parseDump(content);
   const { tasks: taskMap, rootList } = buildTreeFromTasks(persistedTasks);
@@ -232,7 +273,6 @@ function segmentIntoGroups(tasks: Task[], groupOffset: number = 0): ParallelGrou
   for (const task of tasks) {
     const label = task.groupLabel;
 
-    // Start new group if: no current group OR current has no label OR labels differ
     const shouldStartNewGroup = !currentGroup ||
       currentGroup.label === undefined ||
       label !== currentGroup.label;
@@ -248,12 +288,8 @@ function segmentIntoGroups(tasks: Task[], groupOffset: number = 0): ParallelGrou
       };
     }
 
-    // currentGroup is now guaranteed to be non-null (non-null assertion)
     const grp = currentGroup!;
-
-    // Update task's groupIndex to match the group's position (plus offset for existing groups)
     task.groupIndex = groups.length + groupOffset;
-
     grp.taskIndices.push(task.index);
   }
 
@@ -269,7 +305,7 @@ function getRootList(tasks: Map<string, Task>): TaskList {
   return rootTask?.children ?? emptyTaskList();
 }
 
-// Helper: Find a task by title (exact match). Returns Task if unique, throws if ambiguous or not found.
+// Helper: Find a task by title (exact match)
 function findTaskByTitle(tasks: Map<string, Task>, title: string): Task {
   const matches: { index: string; title: string }[] = [];
 
@@ -287,11 +323,9 @@ function findTaskByTitle(tasks: Map<string, Task>, title: string): Task {
     throw ERRORS.AMBIGUOUS(title, matches);
   }
 
-  // matches.length === 1, task must exist in map
   return tasks.get(matches[0].index)!;
 }
 
-// Helper: Validate mode and return whether starting fresh or appending
 function validateModeAndPreprocess(
   mode: string,
   parentIndex: string,
@@ -304,22 +338,20 @@ function validateModeAndPreprocess(
     if (hasChildren) {
       throw ERRORS.LIST_EXISTS(parentIndex);
     }
-    return false; // starting fresh
+    return false;
   } else if (mode === "override") {
     if (existingChildren) {
       for (const oldTask of existingChildren.tasks) {
         tasks.delete(oldTask.index);
       }
     }
-    return false; // starting fresh
+    return false;
   }
-  // "append" mode
   return hasChildren ?? false;
 }
 
-// Helper: Generate indices and build task objects
 function generateAndCreateTasks(
-  items: task_create_list["items"],
+  items: CreateListItem[],
   scopePrefix: string,
   startIndex: number
 ): Task[] {
@@ -329,7 +361,6 @@ function generateAndCreateTasks(
     const item = items[i];
     const index = scopePrefix + String(startIndex + i);
 
-    // Build task object
     taskObjects.push({
       index,
       parentIndex: scopePrefix === "" ? ROOT_INDEX : scopePrefix.slice(0, -1),
@@ -344,7 +375,6 @@ function generateAndCreateTasks(
   return taskObjects;
 }
 
-// Helper: Check if first new group should be ready
 function firstGroupShouldBeReady(
   isAppending: boolean,
   parentIndex: string,
@@ -352,15 +382,11 @@ function firstGroupShouldBeReady(
   parentStatus: TaskStatus | undefined
 ): boolean {
   if (!isAppending) {
-    // Starting fresh: ready if parent is ready (for non-root), or always ready for root
     return parentIndex === ROOT_INDEX || parentStatus === "ready";
   }
-
-  // Appending: starting a new group. Ready only if all existing are complete.
   return !existingChildren!.tasks.some(t => t.status !== "completed");
 }
 
-// Helper: Update parent's children reference
 function updateParentChildren(
   parentIndex: string,
   parentTask: Task | undefined,
@@ -369,7 +395,6 @@ function updateParentChildren(
   store: TaskStore
 ): void {
   if (parentIndex === ROOT_INDEX) {
-    // Update both store rootList and root task's children
     store.rootList = taskList;
     tasks.get(ROOT_INDEX)!.children = taskList;
   } else {
@@ -377,8 +402,6 @@ function updateParentChildren(
   }
 }
 
-// Helper: Find virtual target - an all-"1"s index not in the map
-// Used for focus mode to find the oldest leaf position
 function findVirtualTarget(tasks: Map<string, Task>): string {
   let depth = 1;
   while (true) {
@@ -386,33 +409,26 @@ function findVirtualTarget(tasks: Map<string, Task>): string {
     if (!tasks.has(candidate)) {
       return candidate;
     }
-    // Exponential growth: 1, 2, 4, 8, 16, ...
     depth *= 2;
   }
 }
 
-// Helper: Recursively unblock children when a task becomes ready/completed
-// Marks first group children as ready (inheriting parent status), others stay pending
 function unblockChildren(parent: Task): void {
   if (!parent.children || parent.children.tasks.length === 0) {
     return;
   }
 
-  // Mark first group children as ready
   const children = parent.children.tasks;
   const firstGroupIndex = children.length > 0 ? children[0].groupIndex : -1;
 
   for (const child of children) {
     if (child.status === "pending" && child.groupIndex === firstGroupIndex) {
       child.status = "ready";
-      // Recursively unblock this child's children
       unblockChildren(child);
     }
-    // Other groups stay pending
   }
 }
 
-// Helper: Check if a task can be completed, throw if not
 function canComplete(task: Task): void {
   if (task.status === "completed") {
     throw ERRORS.ALREADY_COMPLETED(task.index);
@@ -433,37 +449,29 @@ function canComplete(task: Task): void {
   }
 }
 
-// Helper: Unblock next parallel group when current group is complete
 function unblockNextGroup(task: Task, store: TaskStore, tasks: Map<string, Task>): void {
-  // Get parent's children (must exist - we got this task from its parent)
   const parentIndex = task.parentIndex;
   const parentChildren = parentIndex === ROOT_INDEX
     ? store.rootList
     : tasks.get(parentIndex)!.children!;
 
-  // Check if all tasks in current group are completed
   const taskGroupIndex = task.groupIndex;
   const sameGroupTasks = parentChildren.tasks.filter(t => t.groupIndex === taskGroupIndex);
 
   if (!sameGroupTasks.every(t => t.status === "completed")) {
-    return; // Group not complete yet
+    return;
   }
 
-  // Unblock next group's tasks
   const nextGroupIndex = taskGroupIndex + 1;
   const nextGroupTasks = parentChildren.tasks.filter(t => t.groupIndex === nextGroupIndex);
 
   for (const nextTask of nextGroupTasks) {
     nextTask.status = "ready";
-    // Recursively unblock children
     unblockChildren(nextTask);
   }
 }
 
-// Create the synthetic root task
-// This task is never persisted and serves as the parent of all root-level tasks.
-// Tool callers should not see or modify this task during normal usage.
-function createRootTask(rootList: TaskList): Task {
+function createSyntheticRootTask(rootList: TaskList): Task {
   return {
     index: ROOT_INDEX,
     parentIndex: "",
@@ -475,13 +483,24 @@ function createRootTask(rootList: TaskList): Task {
   };
 }
 
+// Generate timestamp-based ID
+function generateRootId(): string {
+  return String(Date.now());
+}
+
+// ============================================================================
+// TaskManager
+// ============================================================================
+
 export function createTaskManager(): ITaskManager {
-  // Skip persistence during tests
   const isTest = process.env.NODE_ENV === "test";
 
-  // Load persisted state (skip during tests)
-  // Root task is NOT loaded from file - it will always be created fresh
-  const loaded = isTest ? null : loadFromFile();
+  // Load roots manifest
+  let manifest = isTest ? { roots: [], activeId: null } : loadRootsManifest();
+
+  // Load active root if exists
+  let activeId: string | null = manifest.activeId;
+  let loaded = activeId && !isTest ? loadTasksFromFile(activeId) : null;
   let lastCompletedIndex: string | null = loaded?.lastCompletedIndex ?? null;
 
   let tasks: Map<string, Task>;
@@ -495,11 +514,9 @@ export function createTaskManager(): ITaskManager {
     tasks = new Map();
   }
 
-  // Always create root task (never persisted, always synthetic)
-  const rootTask = createRootTask(rootList);
-  tasks.set(ROOT_INDEX, rootTask);
+  const syntheticRoot = createSyntheticRootTask(rootList);
+  tasks.set(ROOT_INDEX, syntheticRoot);
 
-  // TaskStore implementation
   const store: TaskStore = {
     rootList,
     indexMap: tasks,
@@ -509,10 +526,165 @@ export function createTaskManager(): ITaskManager {
     },
   };
 
-  // Write to file on state changes (skip during tests)
-  function persist(): void {
+  // Persist tasks
+  function persistTasks(): void {
+    if (isTest || !activeId) return;
+    saveTasksToFile(activeId, lastCompletedIndex, tasks);
+  }
+
+  // Persist manifest
+  function persistManifest(): void {
     if (isTest) return;
-    saveToFile(lastCompletedIndex, tasks);
+    saveRootsManifest(manifest);
+  }
+
+  // Helper to execute createList logic
+  function doCreateList(items: CreateListItem[], parent: string | null | undefined, mode: string): { tree: Task[]; rootProgress: Progress } {
+    const parentIndex = parent ?? ROOT_INDEX;
+    const parentTask = tasks.get(parentIndex);
+
+    if (!parentTask) {
+      throw new Error(
+        `INTERNAL ERROR: Parent task "${parentIndex}" not found in task map. ` +
+        `This indicates a bug in task initialization.`
+      );
+    }
+
+    if (parentTask.status === "completed") {
+      throw ERRORS.TASK_COMPLETED(parentIndex);
+    }
+
+    const existingChildren = parentTask.children;
+    const isAppending = validateModeAndPreprocess(mode, parentIndex, existingChildren, tasks);
+
+    const scopePrefix = parentIndex === ROOT_INDEX ? "" : parentIndex + ".";
+    const existingCount = existingChildren?.tasks.length ?? 0;
+    const startIndex = isAppending ? existingCount + 1 : 1;
+
+    const taskObjects = generateAndCreateTasks(items, scopePrefix, startIndex);
+
+    for (const task of taskObjects) {
+      tasks.set(task.index, task);
+    }
+
+    const groupOffset = isAppending ? (existingChildren?.groups.length ?? 0) : 0;
+    const newGroups = segmentIntoGroups(taskObjects, groupOffset);
+
+    if (newGroups.length > 0 && firstGroupShouldBeReady(isAppending, parentIndex, existingChildren, parentTask?.status)) {
+      for (const taskIndex of newGroups[0].taskIndices) {
+        const task = tasks.get(taskIndex);
+        if (task) {
+          task.status = "ready";
+        }
+      }
+    }
+
+    const allChildren = isAppending
+      ? [...existingChildren!.tasks, ...taskObjects]
+      : taskObjects;
+
+    const allGroups = isAppending
+      ? [...existingChildren!.groups, ...newGroups]
+      : newGroups;
+
+    const taskList: TaskList = {
+      tasks: allChildren,
+      groups: allGroups,
+    };
+
+    updateParentChildren(parentIndex, parentTask, taskList, tasks, store);
+
+    return doList("focus");
+  }
+
+  // Helper to execute list logic
+  function doList(listMode: string): { tree: Task[]; rootProgress: Progress } {
+    const mode = listMode || "focus";
+    const rootListLocal = store.rootList;
+    const rootProgress = {
+      completed: rootListLocal.tasks.filter(t => t.status === "completed").length,
+      total: rootListLocal.tasks.length,
+    };
+
+    if (rootListLocal.tasks.length === 0) {
+      return { tree: [], rootProgress };
+    }
+
+    let targetIndex: string | null = lastCompletedIndex;
+
+    if (mode === "focus") {
+      if (!targetIndex) {
+        targetIndex = findVirtualTarget(tasks);
+      }
+    }
+
+    const tree: Task[] = [];
+
+    if (mode === "focus" && targetIndex) {
+      function dfs(children: TaskList | undefined) {
+        if (!children) return;
+
+        for (const task of children.tasks) {
+          const isOnPath = targetIndex!.startsWith(task.index + ".");
+          tree.push(task);
+          if (isOnPath && task.children) {
+            dfs(task.children);
+          }
+        }
+      }
+      dfs(rootListLocal);
+    } else {
+      function dfs(children: TaskList | undefined) {
+        if (!children) return;
+
+        for (const task of children.tasks) {
+          tree.push(task);
+          if (task.children) {
+            dfs(task.children);
+          }
+        }
+      }
+      dfs(rootListLocal);
+    }
+
+    return { tree, rootProgress };
+  }
+
+  // Helper to load a root
+  function loadRoot(id: string): void {
+    const loadedData = loadTasksFromFile(id);
+    if (loadedData) {
+      lastCompletedIndex = loadedData.lastCompletedIndex;
+      tasks = loadedData.tasks;
+      rootList = loadedData.rootList;
+      const root = createSyntheticRootTask(rootList);
+      tasks.set(ROOT_INDEX, root);
+      store.rootList = rootList;
+      store.indexMap = tasks;
+      store.lastCompletedIndex = lastCompletedIndex;
+    } else {
+      lastCompletedIndex = null;
+      rootList = emptyTaskList();
+      tasks = new Map();
+      const root = createSyntheticRootTask(rootList);
+      tasks.set(ROOT_INDEX, root);
+      store.rootList = rootList;
+      store.indexMap = tasks;
+      store.lastCompletedIndex = null;
+    }
+    activeId = id;
+  }
+
+  // Helper to switch to a different root
+  function switchToRoot(id: string): void {
+    // Save current root if exists
+    if (activeId) {
+      saveTasksToFile(activeId, lastCompletedIndex, tasks);
+    }
+    // Load new root
+    loadRoot(id);
+    manifest.activeId = id;
+    persistManifest();
   }
 
   return {
@@ -524,94 +696,110 @@ export function createTaskManager(): ITaskManager {
       return tasks.get(index)?.status;
     },
 
-    createList(params: task_create_list): task_list_result {
-      const { items, parent, mode = "new" } = params;
-
-      // parent is expected to be string or undefined (root level)
-      const parentIndex = parent ?? ROOT_INDEX;
-      const parentTask = tasks.get(parentIndex);
-      // Root task must always exist - if it doesn't, something is wrong
-      if (!parentTask) {
-        throw new Error(
-          `INTERNAL ERROR: Parent task "${parentIndex}" not found in task map. ` +
-          `This indicates a bug in task initialization or persistence loading. ` +
-          `Task map size: ${tasks.size}, Has ROOT_INDEX: ${tasks.has(ROOT_INDEX)}`
-        );
-      }
-      if (parentTask.status === "completed") {
-        throw ERRORS.TASK_COMPLETED(parentIndex);
-      }
-      const existingChildren = parentTask.children;
-
-      // Preprocess: validate mode, delete old children if override
-      const isAppending = validateModeAndPreprocess(mode, parentIndex, existingChildren, tasks);
-
-      // Calculate scope prefix and starting index
-      const scopePrefix = parentIndex === ROOT_INDEX ? "" : parentIndex + ".";
-      const existingCount = existingChildren?.tasks.length ?? 0;
-      const startIndex = isAppending ? existingCount + 1 : 1;
-
-      // Generate indices and create task objects
-      const taskObjects = generateAndCreateTasks(items, scopePrefix, startIndex);
-
-      // Add new tasks to indexMap (but don't set groupIndex yet)
-      for (const task of taskObjects) {
-        tasks.set(task.index, task);
-      }
-
-      // Determine group offset for new tasks
-      const groupOffset = isAppending ? (existingChildren?.groups.length ?? 0) : 0;
-
-      // Segment new tasks into groups (with offset for existing groups)
-      // Note: segmentIntoGroups sets groupIndex on each task
-      const newGroups = segmentIntoGroups(taskObjects, groupOffset);
-
-      // Determine if first new group should be ready
-      if (newGroups.length > 0 && firstGroupShouldBeReady(isAppending, parentIndex, existingChildren, parentTask?.status)) {
-        // Mark first new group's tasks as ready
-        for (const taskIndex of newGroups[0].taskIndices) {
-          const task = tasks.get(taskIndex);
-          if (task) {
-            task.status = "ready";
-          }
-        }
-      }
-
-      // Build final children list
-      const allChildren = isAppending
-        ? [...existingChildren!.tasks, ...taskObjects]
-        : taskObjects;
-
-      // Concatenate existing groups with new groups
-      const allGroups = isAppending
-        ? [...existingChildren!.groups, ...newGroups]
-        : newGroups;
-
-      const taskList: TaskList = {
-        tasks: allChildren,
-        groups: allGroups,
+    // Root management
+    createRoot(params: task_create_root): { root: Root; rootProgress: Progress } {
+      const { title, description, items } = params;
+      const id = generateRootId();
+      const root: Root = {
+        id,
+        title,
+        description,
+        createdAt: Date.now(),
       };
 
-      // Update parent's children reference
-      updateParentChildren(parentIndex, parentTask, taskList, tasks, store);
+      manifest.roots.push(root);
+      manifest.activeId = id;
+      persistManifest();
 
-      // Persist and return
-      persist();
-      return this.list({ mode: "focus" });
+      // Initialize empty task state for this root
+      loadRoot(id);
+
+      // Create initial tasks (items is required)
+      const result = doCreateList(items, undefined, "new");
+
+      // Save after creating tasks
+      persistTasks();
+
+      return { root, rootProgress: result.rootProgress };
     },
 
+    breakdown(params: task_breakdown): { tree: Task[]; rootProgress: Progress } {
+      if (!activeId) {
+        throw ERRORS.NO_ACTIVE_ROOT();
+      }
+
+      const { items, parent, mode = "new" } = params;
+      return doCreateList(items, parent, mode);
+    },
+
+    // Legacy createList - requires active root
+    createList(params: { items: CreateListItem[]; parent?: string | null; mode?: string }): { tree: Task[]; rootProgress: Progress } {
+      if (!activeId) {
+        throw ERRORS.NO_ACTIVE_ROOT();
+      }
+      const { items, parent, mode = "new" } = params;
+      return doCreateList(items, parent, mode);
+    },
+
+    listRoots(): { roots: Root[]; activeId: string | null } {
+      return { roots: manifest.roots, activeId: manifest.activeId };
+    },
+
+    activateRoot(params: task_activate_root): { roots: Root[]; activeId: string | null } {
+      const { id } = params;
+      const root = manifest.roots.find(r => r.id === id);
+      if (!root) {
+        throw ERRORS.ROOT_NOT_FOUND(id);
+      }
+      switchToRoot(id);
+      return { roots: manifest.roots, activeId: manifest.activeId };
+    },
+
+    deleteRoot(params: task_delete_root): { roots: Root[]; activeId: string | null } {
+      const { id } = params;
+      const index = manifest.roots.findIndex(r => r.id === id);
+      if (index === -1) {
+        throw ERRORS.ROOT_NOT_FOUND(id);
+      }
+
+      // If deleting active root, switch to another or clear
+      if (activeId === id) {
+        deleteTasksFile(id);
+        manifest.roots.splice(index, 1);
+        manifest.activeId = manifest.roots.length > 0 ? manifest.roots[0].id : null;
+        persistManifest();
+
+        if (manifest.activeId) {
+          loadRoot(manifest.activeId);
+        } else {
+          activeId = null;
+          rootList = emptyTaskList();
+          tasks = new Map();
+          const root = createSyntheticRootTask(rootList);
+          tasks.set(ROOT_INDEX, root);
+          store.rootList = rootList;
+          store.indexMap = tasks;
+          store.lastCompletedIndex = null;
+        }
+      } else {
+        deleteTasksFile(id);
+        manifest.roots.splice(index, 1);
+        persistManifest();
+      }
+
+      return { roots: manifest.roots, activeId: manifest.activeId };
+    },
+
+    // Task operations
     get(params: task_get): task_get_result {
       const { query } = params;
 
-      // Find task by index or title
       let task: Task | undefined = tasks.get(query);
 
       if (!task) {
-        // Search by title (throws if not found or ambiguous)
         task = findTaskByTitle(tasks, query);
       }
 
-      // Root task: return early with all root-level children
       if (task.index === ROOT_INDEX) {
         const getTasksFromIndices = (indices: string[]): Task[] =>
           indices.map(idx => tasks.get(idx)!).filter(Boolean);
@@ -620,51 +808,41 @@ export function createTaskManager(): ITaskManager {
           task,
           parent: undefined,
           previousGroup: [],
-          currentGroup: getTasksFromIndices(
-            groups.flatMap(g => g.taskIndices)
-          ),
+          currentGroup: getTasksFromIndices(groups.flatMap(g => g.taskIndices)),
           nextGroup: [],
         };
       }
 
-      // Non-root tasks must have a valid parent
       const parent = tasks.get(task.parentIndex);
       if (!parent) {
         throw new Error(
-          `INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found. ` +
-          `All non-root tasks must have a valid parent.`
+          `INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found.`
         );
       }
 
       const parentChildren = parent.children;
       if (!parentChildren || parentChildren.groups.length === 0) {
         throw new Error(
-          `INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" does not own this task. ` +
-          `All non-root tasks must be tracked by their parents.`
+          `INTERNAL ERROR: Parent "${task.parentIndex}" does not own task "${task.index}".`
         );
       }
 
       const groups = parentChildren.groups;
       const taskGroupIndex = task.groupIndex;
 
-      // Validate groupIndex is valid
       if (taskGroupIndex < 0 || taskGroupIndex >= groups.length) {
-        throw new Error(`Invalid groupIndex ${taskGroupIndex} for task ${task.index}. Groups length: ${groups.length}`);
+        throw new Error(`Invalid groupIndex ${taskGroupIndex} for task ${task.index}`);
       }
 
-      // Get tasks from indices
       const getTasksFromIndices = (indices: string[]): Task[] =>
         indices.map(idx => tasks.get(idx)!).filter(Boolean);
 
-      // Previous group
       const previousGroup = taskGroupIndex > 0
         ? getTasksFromIndices(groups[taskGroupIndex - 1].taskIndices)
         : [];
 
-      // Current group
       const currentGroup = getTasksFromIndices(groups[taskGroupIndex].taskIndices);
 
-      // Next group
       const nextGroup = taskGroupIndex < groups.length - 1
         ? getTasksFromIndices(groups[taskGroupIndex + 1].taskIndices)
         : [];
@@ -681,25 +859,20 @@ export function createTaskManager(): ITaskManager {
     update(params: task_update): task_update_result {
       const { index, title, description } = params;
 
-      // Find task by index or title
       let task: Task | undefined = tasks.get(index);
 
       if (!task) {
-        // Search by title (throws if not found or ambiguous)
         task = findTaskByTitle(tasks, index);
       }
 
-      // Reject modification of synthetic root task
       if (task.index === ROOT_INDEX) {
         throw ERRORS.ROOT_TASK();
       }
 
-      // Reject if task is completed
       if (task.status === "completed") {
         throw ERRORS.TASK_COMPLETED(task.index);
       }
 
-      // Update fields if provided
       if (title !== undefined) {
         task.title = title;
       }
@@ -708,107 +881,34 @@ export function createTaskManager(): ITaskManager {
         task.description = description ?? undefined;
       }
 
-      // Persist changes
-      persist();
+      persistTasks();
 
       return { task };
     },
 
-    complete(params: task_complete): task_complete_result {
+    complete(params: task_complete): { tree: Task[]; rootProgress: Progress } {
       const { index } = params;
 
-      // 1. Find task by index or title
       let task: Task | undefined = tasks.get(index);
 
       if (!task) {
-        // Search by title (throws if not found or ambiguous)
         task = findTaskByTitle(tasks, index);
       }
 
-      // 2. Validate task can be completed
       canComplete(task);
 
-      // 3. Mark task as completed
       task.status = "completed";
-
-      // 4. Update lastCompletedIndex in store
       lastCompletedIndex = task.index;
       store.lastCompletedIndex = lastCompletedIndex;
 
-      // 5. Unblock next group if current group is complete
       unblockNextGroup(task, store, tasks);
+      persistTasks();
 
-      // 6. Persist changes
-      persist();
-
-      // 7. Return result
-      return this.list({ mode: "focus" });
+      return doList("focus");
     },
 
-    list(params: task_list): task_list_result {
-      const { mode = "focus" } = params;
-
-      // Calculate root progress
-      const rootList = store.rootList;
-      const rootProgress = {
-        completed: rootList.tasks.filter(t => t.status === "completed").length,
-        total: rootList.tasks.length,
-      };
-
-      // Get root-level children
-      if (rootList.tasks.length === 0) {
-        return { tree: [], rootProgress };
-      }
-
-      // For focus mode, determine the target (last completed task or oldest leaf)
-      let targetIndex: string | null = lastCompletedIndex;
-
-      if (mode === "focus") {
-        if (!targetIndex) {
-          // Find virtual target: an all-"1"s index that doesn't exist
-          // This represents the "oldest leaf" position
-          targetIndex = findVirtualTarget(tasks);
-        }
-      }
-
-      // Build the result tree
-      const tree: Task[] = [];
-
-      if (mode === "focus" && targetIndex) {
-        // Focus mode: show all tasks, but only expand path to target
-        function dfs(children: TaskList | undefined) {
-          if (!children) return;
-
-          for (const task of children.tasks) {
-            // Task is on path if target starts with task.index + "." (task is ancestor of target)
-            const isOnPath = targetIndex!.startsWith(task.index + ".");
-
-            // Always push task, recurse only if on path
-            tree.push(task);
-            if (isOnPath && task.children) {
-              dfs(task.children);
-            }
-          }
-        }
-
-        dfs(rootList);
-      } else {
-        // Full mode: DFS of all tasks
-        function dfs(children: TaskList | undefined) {
-          if (!children) return;
-
-          for (const task of children.tasks) {
-            tree.push(task);
-            if (task.children) {
-              dfs(task.children);
-            }
-          }
-        }
-
-        dfs(rootList);
-      }
-
-      return { tree, rootProgress };
+    list(params: task_list): { tree: Task[]; rootProgress: Progress } {
+      return doList(params.mode ?? "focus");
     },
   };
 }

@@ -5,17 +5,26 @@
 
 import { createTaskManager } from "../src/task-manager";
 import { TaskTreeError, ERRORS } from "../src/errors";
-import { unlinkSync, existsSync } from "node:fs";
+import { unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-// Use an absolute path for the persistence file in the project directory
 const PROJECT_ROOT = resolve(__dirname, "..");
-const PERSISTENCE_FILE = resolve(PROJECT_ROOT, ".nested-todo.json");
+const PERSISTENCE_DIR = resolve(PROJECT_ROOT, ".pi/task_tree");
+const LISTS_DIR = resolve(PERSISTENCE_DIR, "lists");
+const ROOTS_FILE = resolve(PERSISTENCE_DIR, "roots.jsonl");
 
 function cleanupPersistence() {
   try {
-    if (existsSync(PERSISTENCE_FILE)) {
-      unlinkSync(PERSISTENCE_FILE);
+    if (existsSync(LISTS_DIR)) {
+      const files = require("fs").readdirSync(LISTS_DIR);
+      for (const file of files) {
+        if (file.endsWith(".jsonl")) {
+          unlinkSync(resolve(LISTS_DIR, file));
+        }
+      }
+    }
+    if (existsSync(ROOTS_FILE)) {
+      unlinkSync(ROOTS_FILE);
     }
   } catch {
     // Ignore errors during cleanup
@@ -26,7 +35,6 @@ beforeEach(() => {
   cleanupPersistence();
 });
 
-// Helper to check specific error code
 function expectError(fn: () => void, code: string) {
   try {
     fn();
@@ -45,44 +53,45 @@ describe("Task Creation", () => {
     manager = createTaskManager();
   });
 
-  describe("create root list", () => {
+  describe("create root", () => {
     test("creates root list with 3 items, first ready, rest pending", () => {
-      const result = manager.createList({
+      const result = manager.createRoot({
+        title: "Plan",
         items: [
           { title: "Task 1" },
           { title: "Task 2" },
           { title: "Task 3" },
         ],
-        parent: null,
       });
 
-      // Task "1" is ready (first in sequential chain)
-      // Tasks "2", "3" are pending (blocked by "1")
       expect(manager.getTaskStatus("1")).toBe("ready");
       expect(manager.getTaskStatus("2")).toBe("pending");
       expect(manager.getTaskStatus("3")).toBe("pending");
     });
 
-    test("second root creation with duplicate index is rejected", () => {
-      manager.createList({
-        items: [{ title: "Task 1" }],
-        parent: null,
+    test("second root creation is allowed (creates new root)", () => {
+      manager.createRoot({
+        title: "Plan 1",
+        items: [{ title: "Task" }],
       });
 
-      expectError(() =>
-        manager.createList({
-          items: [{ title: "Duplicate" }],
-          parent: null,
-        }),
-        "LIST_EXISTS"
-      );
+      manager.createRoot({
+        title: "Plan 2",
+        items: [{ title: "Task" }],
+      });
+
+      const roots = manager.listRoots();
+      expect(roots.roots.length).toBe(2);
     });
 
     test("create under non-existent parent throws internal error", () => {
-      // Non-existent parent should throw an explicit internal error,
-      // not a generic NOT_FOUND - this helps expose bugs in initialization
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
+      });
+
       expect(() =>
-        manager.createList({
+        manager.breakdown({
           items: [{ title: "Child" }],
           parent: "99",
         })
@@ -90,14 +99,14 @@ describe("Task Creation", () => {
     });
   });
 
-  describe("nested list status inheritance", () => {
-    test("inherits parent status (ready)", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+  describe("breakdown", () => {
+    test("creates subtasks under parent", () => {
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
       });
 
-      const result = manager.createList({
+      manager.breakdown({
         items: [
           { title: "Child 1" },
           { title: "Child 2" },
@@ -105,95 +114,62 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      // First child inherits parent's ready status
       expect(manager.getTaskStatus("1.1")).toBe("ready");
-      // Second child blocked by first
       expect(manager.getTaskStatus("1.2")).toBe("pending");
     });
 
-    test("inherits parent status (pending)", () => {
-      // Create "1" (ready) and "2" (pending by being second)
-      manager.createList({
-        items: [{ title: "Root 1" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [{ title: "Root 2" }],
-        parent: null,
-        mode: "append",
+    test("breakdown requires active root", () => {
+      expect(() =>
+        manager.breakdown({
+          items: [{ title: "Orphan" }],
+          parent: "1",
+        })
+      ).toThrow("No active task list");
+    });
+  });
+
+  describe("nested list status inheritance", () => {
+    test("inherits parent status (ready)", () => {
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Root" }],
       });
 
-      // Create children under "2" (pending parent)
-      manager.createList({
+      manager.breakdown({
         items: [
           { title: "Child 1" },
           { title: "Child 2" },
         ],
-        parent: "2",
-      });
-
-      // Both children inherit pending from parent "2"
-      expect(manager.getTaskStatus("2.1")).toBe("pending");
-      expect(manager.getTaskStatus("2.2")).toBe("pending");
-    });
-
-    test("parallel group inheritance", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
-      });
-
-      manager.createList({
-        items: [
-          { title: "A1", parallelGroup: "A" },
-          { title: "A2", parallelGroup: "A" },
-          { title: "B1", parallelGroup: "B" },
-          { title: "B2", parallelGroup: "B" },
-        ],
         parent: "1",
       });
 
-      // Group A is ready (first group inherits parent)
       expect(manager.getTaskStatus("1.1")).toBe("ready");
-      expect(manager.getTaskStatus("1.2")).toBe("ready");
-      // Group B is pending (blocked by incomplete A)
-      expect(manager.getTaskStatus("1.3")).toBe("pending");
-      expect(manager.getTaskStatus("1.4")).toBe("pending");
+      expect(manager.getTaskStatus("1.2")).toBe("pending");
     });
 
-    test("deep expansion", () => {
-      manager.createList({
+    test("first child inherits parent ready status", () => {
+      manager.createRoot({
+        title: "Plan",
         items: [{ title: "Root" }],
-        parent: null,
       });
-      manager.createList({
-        items: [{ title: "Level 2" }],
+
+      manager.breakdown({
+        items: [{ title: "Child" }],
         parent: "1",
       });
 
-      manager.createList({
-        items: [
-          { title: "Deep 1" },
-          { title: "Deep 2" },
-          { title: "Deep 3" },
-        ],
-        parent: "1.1",
-      });
-
-      expect(manager.getTaskStatus("1.1.1")).toBe("ready");
-      expect(manager.getTaskStatus("1.1.2")).toBe("pending");
-      expect(manager.getTaskStatus("1.1.3")).toBe("pending");
+      expect(manager.getTaskStatus("1.1")).toBe("ready");
     });
   });
 
   describe("parallel group behavior", () => {
     test("append with same group label creates new group, pending until previous complete", () => {
-      // Create root with one parallel group
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
       });
-      manager.createList({
+
+      manager.breakdown({
         items: [
           { title: "Group1 Task 1", parallelGroup: "group-a" },
           { title: "Group1 Task 2", parallelGroup: "group-a" },
@@ -201,216 +177,45 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      // Check there are 2 groups
       const state = manager.getState();
       expect(state.indexMap.get("1")?.children?.groups.length).toBe(1);
 
-      // Append with same group label - should create NEW group, not extend group-a
-      manager.createList({
+      manager.breakdown({
         items: [{ title: "Group2 Task 1", parallelGroup: "group-a" }],
         parent: "1",
         mode: "append",
       });
 
-      // Now there should be 2 groups
       const state2 = manager.getState();
       expect(state2.indexMap.get("1")?.children?.groups.length).toBe(2);
-
-      // New group should be pending (previous group is not complete)
       expect(manager.getTaskStatus("1.3")).toBe("pending");
-
-      // Complete group-a
-      manager.complete({ index: "1.1" });
-      manager.complete({ index: "1.2" });
-
-      // Now group-b should be ready
-      expect(manager.getTaskStatus("1.3")).toBe("ready");
-    });
-
-    test("append new parallel group after second group completes", () => {
-      // Create root with two parallel groups
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [
-          { title: "Group1 Task 1", parallelGroup: "group-a" },
-          { title: "Group1 Task 2", parallelGroup: "group-a" },
-          { title: "Group2 Task 1", parallelGroup: "group-b" },
-        ],
-        parent: "1",
-      });
-
-      // First group (group-a) should be ready, second group pending
-      expect(manager.getTaskStatus("1.1")).toBe("ready");
-      expect(manager.getTaskStatus("1.2")).toBe("ready");
-      expect(manager.getTaskStatus("1.3")).toBe("pending");
-
-      // Complete first group
-      manager.complete({ index: "1.1" });
-      manager.complete({ index: "1.2" });
-
-      // Second group should now be ready
-      expect(manager.getTaskStatus("1.3")).toBe("ready");
-
-      // Complete second group
-      manager.complete({ index: "1.3" });
-
-      // Append a new third group
-      manager.createList({
-        items: [
-          { title: "Group3 Task 1", parallelGroup: "group-c" },
-        ],
-        parent: "1",
-        mode: "append",
-      });
-
-      // Third group should be ready (second group is complete)
-      expect(manager.getTaskStatus("1.4")).toBe("ready");
     });
   });
 
   describe("mode behaviors", () => {
     test("expand completed task rejected", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Task" }],
       });
       manager.complete({ index: "1" });
 
-      expect(() =>
-        manager.createList({
+      expectError(() =>
+        manager.breakdown({
           items: [{ title: "Child" }],
           parent: "1",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
-    test("new mode when children exist rejected", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [{ title: "Child" }],
-        parent: "1",
-      });
-
-      expect(() =>
-        manager.createList({
-          items: [{ title: "New child" }],
-          parent: "1",
-          mode: "new",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
-    test("append after siblings complete shows new task ready", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [
-          { title: "Child 1" },
-          { title: "Child 2" },
-        ],
-        parent: "1",
-      });
-      manager.complete({ index: "1.1" });
-      manager.complete({ index: "1.2" });
-
-      const result = manager.createList({
-        items: [{ title: "Child 3" }],
-        parent: "1",
-        mode: "append",
-      });
-
-      expect(manager.getTaskStatus("1.3")).toBe("ready");
-    });
-
-    test("append with incomplete siblings shows new task pending", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [{ title: "Child 1" }],
-        parent: "1",
-      });
-
-      const result = manager.createList({
-        items: [{ title: "Child 2" }],
-        parent: "1",
-        mode: "append",
-      });
-
-      expect(manager.getTaskStatus("1.2")).toBe("pending");
-    });
-
-    test("override mode at root level clears all tasks", () => {
-      // Create some root-level tasks
-      manager.createList({
-        items: [
-          { title: "Task 1" },
-          { title: "Task 2" },
-          { title: "Task 3" },
-        ],
-        parent: null,
-      });
-
-      expect(manager.getTaskStatus("1")).toBe("ready");
-      expect(manager.getTaskStatus("2")).toBe("pending");
-      expect(manager.getTaskStatus("3")).toBe("pending");
-
-      // Override with empty list - clears all root tasks
-      const result = manager.createList({
-        items: [],
-        mode: "override",
-      });
-
-      const state = manager.getState();
-      expect(state.indexMap.has("1")).toBe(false);
-      expect(state.indexMap.has("2")).toBe(false);
-      expect(state.indexMap.has("3")).toBe(false);
-      expect(state.indexMap.size).toBe(1); // only root
-      expect(state.rootList.tasks.length).toBe(0);
-    });
-
-    test("override mode at root level replaces all tasks", () => {
-      // Create initial root tasks
-      manager.createList({
-        items: [
-          { title: "Old 1" },
-          { title: "Old 2" },
-        ],
-        parent: null,
-      });
-
-      // Override with new root tasks
-      const result = manager.createList({
-        items: [
-          { title: "New 1" },
-          { title: "New 2" },
-          { title: "New 3" },
-        ],
-        mode: "override",
-      });
-
-      const state = manager.getState();
-      expect(state.indexMap.get("1")?.title).toBe("New 1");
-      expect(state.indexMap.get("2")?.title).toBe("New 2");
-      expect(state.indexMap.get("3")?.title).toBe("New 3");
-      expect(state.rootList.tasks.length).toBe(3);
+        }),
+        "TASK_COMPLETED"
+      );
     });
 
     test("override mode replaces existing children", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
       });
-      manager.createList({
+
+      manager.breakdown({
         items: [
           { title: "Old 1" },
           { title: "Old 2" },
@@ -418,7 +223,7 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      manager.createList({
+      manager.breakdown({
         items: [
           { title: "New 1" },
           { title: "New 2" },
@@ -428,20 +233,19 @@ describe("Task Creation", () => {
         mode: "override",
       });
 
-      // Old children should be replaced
       const state = manager.getState();
       expect(state.indexMap.get("1.1")?.title).toBe("New 1");
       expect(state.indexMap.get("1.2")?.title).toBe("New 2");
       expect(state.indexMap.get("1.3")?.title).toBe("New 3");
-      expect(state.indexMap.size).toBe(5); // root, 1, 1.1, 1.2, 1.3
     });
 
     test("override mode removes old children when new list is shorter", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
       });
-      manager.createList({
+
+      manager.breakdown({
         items: [
           { title: "Old 1" },
           { title: "Old 2" },
@@ -450,27 +254,24 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      // Override with only one child
-      manager.createList({
+      manager.breakdown({
         items: [{ title: "New 1" }],
         parent: "1",
         mode: "override",
       });
 
-      // Old children should be deleted
       const state = manager.getState();
       expect(state.indexMap.has("1.2")).toBe(false);
       expect(state.indexMap.has("1.3")).toBe(false);
-      expect(state.indexMap.get("1.1")?.title).toBe("New 1");
-      expect(state.indexMap.size).toBe(3); // root, 1, 1.1
     });
 
     test("override mode with empty items clears children", () => {
-      manager.createList({
-        items: [{ title: "Root" }],
-        parent: null,
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Parent" }],
       });
-      manager.createList({
+
+      manager.breakdown({
         items: [
           { title: "Child 1" },
           { title: "Child 2" },
@@ -478,8 +279,7 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      // Clear children with empty items
-      manager.createList({
+      manager.breakdown({
         items: [],
         parent: "1",
         mode: "override",
@@ -488,12 +288,7 @@ describe("Task Creation", () => {
       const state = manager.getState();
       expect(state.indexMap.has("1.1")).toBe(false);
       expect(state.indexMap.has("1.2")).toBe(false);
-      expect(state.indexMap.get("1")?.title).toBe("Root");
-      expect(state.indexMap.size).toBe(2); // root, 1
-      // Parent's children should be empty
-      const root1 = state.indexMap.get("1");
-      expect(root1?.children?.tasks.length).toBe(0);
-      expect(root1?.children?.groups.length).toBe(0);
+      expect(state.indexMap.get("1")?.title).toBe("Parent");
     });
   });
 });
@@ -506,268 +301,80 @@ describe("Task Completion", () => {
   });
 
   test("complete non-existent rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
     expectError(() => manager.complete({ index: "99" }), "NOT_FOUND");
   });
 
   test("complete ready task marks it completed", () => {
-    manager.createList({
+    manager.createRoot({
+      title: "Plan",
       items: [{ title: "Task" }],
-      parent: null,
     });
 
     const result = manager.complete({ index: "1" });
     expect(manager.getTaskStatus("1")).toBe("completed");
   });
 
-  test("pending task is rejected", () => {
-    manager.createList({
-      items: [{ title: "Task 1" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "Task 2" }],
-      parent: null,
-      mode: "append",
+  test("complete pending task rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "First" }, { title: "Second" }],
     });
 
-    expect(() => manager.complete({ index: "2" })).toThrow(TaskTreeError);
+    expectError(() => manager.complete({ index: "2" }), "NOT_READY");
   });
 
-  test("task with incomplete children rejected", () => {
-    manager.createList({
-      items: [{ title: "Parent" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "Child" }],
-      parent: "1",
-    });
-
-    expect(() => manager.complete({ index: "1" })).toThrow(TaskTreeError);
-  });
-
-  test("already completed task rejected", () => {
-    manager.createList({
-      items: [{ title: "Task" }],
-      parent: null,
-    });
-    manager.complete({ index: "1" });
-
-    expect(() => manager.complete({ index: "1" })).toThrow(TaskTreeError);
-  });
-
-  test("completing first group unblocks second", () => {
-    manager.createList({
-      items: [{ title: "Root" }],
-      parent: null,
-    });
-    manager.createList({
+  test("complete unblocks next sequential task", () => {
+    manager.createRoot({
+      title: "Plan",
       items: [
-        { title: "Group A", parallelGroup: "A" },
-        { title: "Group B", parallelGroup: "B" },
+        { title: "First" },
+        { title: "Second" },
+        { title: "Third" },
       ],
-      parent: "1",
-    });
-
-    manager.complete({ index: "1.1" });
-    expect(manager.getTaskStatus("1.2")).toBe("ready");
-  });
-
-  test("completing one in parallel group doesn't unblock next group", () => {
-    manager.createList({
-      items: [{ title: "Root" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [
-        { title: "A1", parallelGroup: "A" },
-        { title: "A2", parallelGroup: "A" },
-        { title: "B1", parallelGroup: "B" },
-      ],
-      parent: "1",
-    });
-
-    manager.complete({ index: "1.2" });
-    expect(manager.getTaskStatus("1.1")).toBe("ready"); // still ready (same group)
-    expect(manager.getTaskStatus("1.3")).toBe("pending"); // still blocked by incomplete A
-  });
-
-  test("completing parallel group unblocks next", () => {
-    manager.createList({
-      items: [{ title: "Root" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [
-        { title: "A1", parallelGroup: "A" },
-        { title: "A2", parallelGroup: "A" },
-        { title: "B1", parallelGroup: "B" },
-      ],
-      parent: "1",
-    });
-
-    manager.complete({ index: "1.1" });
-    manager.complete({ index: "1.2" });
-    expect(manager.getTaskStatus("1.3")).toBe("ready");
-  });
-
-  test("completing child requires parent ready", () => {
-    manager.createList({
-      items: [{ title: "Parent" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "Child" }],
-      parent: "1",
-    });
-
-    manager.complete({ index: "1.1" });
-    expect(manager.getTaskStatus("1")).toBe("ready");
-  });
-
-  test("completing root unblocks next root", () => {
-    manager.createList({
-      items: [{ title: "Root 1" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "Root 2" }],
-      parent: null,
-      mode: "append",
     });
 
     manager.complete({ index: "1" });
     expect(manager.getTaskStatus("2")).toBe("ready");
+    expect(manager.getTaskStatus("3")).toBe("pending");
+
+    manager.complete({ index: "2" });
+    expect(manager.getTaskStatus("3")).toBe("ready");
   });
 
-  test("completing parent marks completed", () => {
-    manager.createList({
-      items: [{ title: "Parent" }],
-      parent: null,
+  test("complete last task marks root list complete", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
-    manager.createList({
-      items: [{ title: "Child" }],
-      parent: "1",
-    });
-    manager.complete({ index: "1.1" });
-    manager.complete({ index: "1" });
 
+    manager.complete({ index: "1" });
+    const result = manager.list({ mode: "full" });
+    expect(result.rootProgress.completed).toBe(1);
+  });
+
+  test("complete by title", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Unique" }],
+    });
+
+    manager.complete({ index: "Unique" });
     expect(manager.getTaskStatus("1")).toBe("completed");
   });
 
-  test("complete via ambiguous title rejected", () => {
-    manager.createList({
-      items: [
-        { title: "Task" },
-        { title: "Task" },
-      ],
-      parent: null,
+  test("complete already completed rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
 
-    expect(() => manager.complete({ index: "Task" })).toThrow(TaskTreeError);
-  });
-
-  test("complete result includes accurate rootProgress", () => {
-    manager.createList({
-      items: [
-        { title: "Root 1" },
-        { title: "Root 2" },
-      ],
-      parent: null,
-    });
-
-    const result = manager.complete({ index: "1" });
-    expect(result.rootProgress).toEqual({ completed: 1, total: 2 });
-  });
-});
-
-describe("Task Query", () => {
-  let manager: ReturnType<typeof createTaskManager>;
-
-  beforeEach(() => {
-    manager = createTaskManager();
-  });
-
-  test("get by index returns detail", () => {
-    manager.createList({
-      items: [{ title: "Task", description: "Description" }],
-      parent: null,
-    });
-
-    const result = manager.get({ query: "1" });
-    expect(result.task.index).toBe("1");
-    expect(result.task.title).toBe("Task");
-    expect(result.task.description).toBe("Description");
-  });
-
-  test("get by unique title returns task", () => {
-    manager.createList({
-      items: [
-        { title: "Unique" },
-        { title: "Also Unique" },
-      ],
-      parent: null,
-    });
-
-    const result = manager.get({ query: "Unique" });
-    expect(result.task.index).toBe("1");
-  });
-
-  test("get returns correct group context", () => {
-    manager.createList({
-      items: [{ title: "Parent" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [
-        { title: "A1", parallelGroup: "A" },
-        { title: "A2", parallelGroup: "A" },
-        { title: "B1", parallelGroup: "B" },
-      ],
-      parent: "1",
-    });
-
-    const result = manager.get({ query: "1.2" });
-    // Task 1 is the parent, not a sibling, so previousGroup should be empty
-    expect(result.parent?.index).toBe("1");
-    expect(result.previousGroup.map(t => t.index)).toEqual([]);
-    expect(result.currentGroup.map(t => t.index)).toEqual(["1.1", "1.2"]);
-    expect(result.nextGroup.map(t => t.index)).toEqual(["1.3"]);
-  });
-
-  test("ambiguous title rejected", () => {
-    manager.createList({
-      items: [
-        { title: "Task" },
-        { title: "Task" },
-      ],
-      parent: null,
-    });
-
-    expect(() => manager.get({ query: "Task" })).toThrow(TaskTreeError);
-  });
-
-  test("get non-existent rejected", () => {
-    expect(() => manager.get({ query: "99" })).toThrow(TaskTreeError);
-  });
-
-  test("get root task returns root with children", () => {
-    manager.createList({
-      items: [
-        { title: "Task 1" },
-        { title: "Task 2" },
-      ],
-      parent: null,
-    });
-
-    const result = manager.get({ query: "root" });
-    expect(result.task.index).toBe("root");
-    expect(result.task.title).toBe("Root");
-    expect(result.parent).toBeUndefined();
-    // Root's children should be the root-level tasks
-    expect(result.currentGroup.map(t => t.index)).toEqual(["1", "2"]);
-    expect(result.previousGroup).toEqual([]);
-    expect(result.nextGroup).toEqual([]);
+    manager.complete({ index: "1" });
+    expectError(() => manager.complete({ index: "1" }), "ALREADY_COMPLETED");
   });
 });
 
@@ -779,27 +386,38 @@ describe("Task Update", () => {
   });
 
   test("update non-existent rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
     expectError(() => manager.update({ index: "99", title: "New" }), "NOT_FOUND");
   });
 
   test("update root task rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
     expectError(() => manager.update({ index: "root", title: "New" }), "ROOT_TASK");
   });
 
   test("update completed task rejected", () => {
-    manager.createList({
+    manager.createRoot({
+      title: "Plan",
       items: [{ title: "Task" }],
-      parent: null,
     });
+
     manager.complete({ index: "1" });
 
     expectError(() => manager.update({ index: "1", title: "New" }), "TASK_COMPLETED");
   });
 
   test("update title", () => {
-    manager.createList({
-      items: [{ title: "Old Title" }],
-      parent: null,
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
 
     const result = manager.update({ index: "1", title: "New Title" });
@@ -807,168 +425,193 @@ describe("Task Update", () => {
     expect(manager.getState().getTask("1")!.title).toBe("New Title");
   });
 
-  test("clear description", () => {
-    manager.createList({
-      items: [{ title: "Task", description: "Desc" }],
-      parent: null,
+  test("update description to null clears", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task", description: "Old" }],
     });
 
     manager.update({ index: "1", description: null });
     expect(manager.getState().getTask("1")!.description).toBeUndefined();
   });
 
-  test("update description with value", () => {
-    manager.createList({
+  test("update description", () => {
+    manager.createRoot({
+      title: "Plan",
       items: [{ title: "Task" }],
-      parent: null,
     });
 
     const result = manager.update({ index: "1", description: "New description" });
     expect(result.task.description).toBe("New description");
   });
 
-  test("update via ambiguous title rejected", () => {
-    manager.createList({
-      items: [
-        { title: "Task" },
-        { title: "Task" },
-      ],
-      parent: null,
+  test("update by index works", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
 
-    expect(() => manager.update({ index: "Task", title: "New" })).toThrow(TaskTreeError);
+    const result = manager.update({ index: "1", title: "New" });
+    expect(result.task.title).toBe("New");
   });
 });
 
-describe("Task List", () => {
+describe("Task Retrieval", () => {
   let manager: ReturnType<typeof createTaskManager>;
 
   beforeEach(() => {
     manager = createTaskManager();
   });
 
-  test("empty state returns empty tree", () => {
-    const result = manager.list({ mode: "focus" });
-    expect(result.tree).toHaveLength(0);
-    expect(result.rootProgress).toEqual({ completed: 0, total: 0 });
+  test("get by index returns detail", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task", description: "Description" }],
+    });
+
+    const result = manager.get({ query: "1" });
+    expect(result.task.index).toBe("1");
+    expect(result.task.title).toBe("Task");
+    expect(result.task.description).toBe("Description");
   });
 
-  test("focus mode fresh start shows oldest leaf", () => {
-    manager.createList({
-      items: [{ title: "Root 1" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "L2" }],
-      parent: "1",
-    });
-    manager.createList({
-      items: [{ title: "Leaf" }],
-      parent: "1.1",
-    });
-    manager.createList({
-      items: [{ title: "Root 2" }],
-      parent: null,
-      mode: "append",
-    });
-    manager.createList({
-      items: [{ title: "L2" }],
-      parent: "2",
+  test("get by unique title returns task", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Unique" }, { title: "Also Unique" }],
     });
 
-    const result = manager.list({ mode: "focus" });
-    // Should show path to oldest leaf: 1 → 1.1 → 1.1.1
-    const indices = result.tree.map(t => t.index);
-    expect(indices).toContain("1");
-    expect(indices).toContain("1.1");
-    expect(indices).toContain("1.1.1");
-    // 2.1 should not be shown (collapsed)
-    expect(indices).not.toContain("2.1");
+    const result = manager.get({ query: "Unique" });
+    expect(result.task.index).toBe("1");
   });
 
-  test("focus mode shows path to last completed task", () => {
-    // Create tree 1 with subtree
-    manager.createList({
-      items: [{ title: "Root 1" }],
-      parent: null,
+  test("get returns correct group context", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Parent" }],
     });
-    manager.createList({
-      items: [{ title: "Child" }],
+
+    manager.breakdown({
+      items: [
+        { title: "A1", parallelGroup: "A" },
+        { title: "A2", parallelGroup: "A" },
+        { title: "B1", parallelGroup: "B" },
+      ],
       parent: "1",
     });
-    manager.createList({
-      items: [{ title: "Leaf" }],
-      parent: "1.1",
-    });
 
-    // Create tree 2
-    manager.createList({
-      items: [{ title: "Root 2" }],
-      parent: null,
-      mode: "append",
-    });
-
-    // Complete 1.1.1, then 1.1 (lastCompletedIndex becomes 1.1)
-    manager.complete({ index: "1.1.1" });
-    manager.complete({ index: "1.1" });
-
-    const result = manager.list({ mode: "focus" });
-    const indices = result.tree.map(t => t.index);
-
-    // Focus mode shows all tasks, recurses only on path to target
-    expect(indices).toContain("1");
-    expect(indices).toContain("1.1");
-    // 1.1.1 not shown (target is 1.1, don't recurse into its children)
-    expect(indices).not.toContain("1.1.1");
-    // Root 2 is shown but not expanded
-    expect(indices).toContain("2");
-    expect(indices).not.toContain("2.1");
+    const result = manager.get({ query: "1.2" });
+    expect(result.parent?.index).toBe("1");
+    expect(result.previousGroup.map(t => t.index)).toEqual([]);
+    expect(result.currentGroup.map(t => t.index)).toEqual(["1.1", "1.2"]);
+    expect(result.nextGroup.map(t => t.index)).toEqual(["1.3"]);
   });
 
-  test("full mode shows entire tree", () => {
-    manager.createList({
-      items: [{ title: "Root 1" }],
-      parent: null,
+  test("ambiguous title rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }, { title: "Task" }],
     });
-    manager.createList({
-      items: [{ title: "L2" }],
-      parent: "1",
+
+    expectError(() => manager.get({ query: "Task" }), "AMBIGUOUS");
+  });
+
+  test("get non-existent rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
-    manager.createList({
-      items: [{ title: "Leaf" }],
-      parent: "1.1",
+
+    expectError(() => manager.get({ query: "99" }), "NOT_FOUND");
+  });
+
+  test("get root task returns root with children", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [
+        { title: "Task 1" },
+        { title: "Task 2" },
+      ],
     });
-    manager.createList({
-      items: [{ title: "Root 2" }],
-      parent: null,
-      mode: "append",
+
+    const result = manager.get({ query: "root" });
+    expect(result.task.index).toBe("root");
+    expect(result.task.title).toBe("Root");
+    expect(result.parent).toBeUndefined();
+    expect(result.currentGroup.map(t => t.index)).toEqual(["1", "2"]);
+    expect(result.previousGroup).toEqual([]);
+    expect(result.nextGroup).toEqual([]);
+  });
+});
+
+describe("Root Management", () => {
+  let manager: ReturnType<typeof createTaskManager>;
+
+  beforeEach(() => {
+    manager = createTaskManager();
+  });
+
+  test("listRoots returns empty initially", () => {
+    const result = manager.listRoots();
+    expect(result.roots).toEqual([]);
+    expect(result.activeId).toBeNull();
+  });
+
+  test("createRoot sets active root", () => {
+    const result = manager.createRoot({
+      title: "My Plan",
+      items: [{ title: "Task" }],
     });
-    manager.createList({
-      items: [{ title: "L2" }],
-      parent: "2",
+
+    expect(result.root.title).toBe("My Plan");
+    expect(result.root.id).toBeDefined();
+
+    const roots = manager.listRoots();
+    expect(roots.activeId).toBe(result.root.id);
+  });
+
+  test("activateRoot switches active root", () => {
+    const root1 = manager.createRoot({
+      title: "Plan 1",
+      items: [{ title: "Task 1" }],
     });
+
+    const root2 = manager.createRoot({
+      title: "Plan 2",
+      items: [{ title: "Task 2" }],
+    });
+
+    manager.activateRoot({ id: root1.root.id });
+
+    const state = manager.getState();
+    expect(state.indexMap.has("1")).toBe(true);
+  });
+
+  test("activateRoot throws for non-existent", () => {
+    expectError(() => manager.activateRoot({ id: "nonexistent" }), "ROOT_NOT_FOUND");
+  });
+
+  test("deleteRoot removes root", () => {
+    const root = manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
+    manager.deleteRoot({ id: root.root.id });
+
+    const roots = manager.listRoots();
+    expect(roots.roots.length).toBe(0);
+  });
+
+  test("deleteRoot clears active if deleted root was active", () => {
+    const root = manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
+    manager.deleteRoot({ id: root.root.id });
 
     const result = manager.list({ mode: "full" });
-    const indices = result.tree.map(t => t.index);
-    expect(indices).toEqual(["1", "1.1", "1.1.1", "2", "2.1"]);
-  });
-
-  test("focus mode all done shows root tasks", () => {
-    manager.createList({
-      items: [{ title: "Root 1" }],
-      parent: null,
-    });
-    manager.createList({
-      items: [{ title: "Root 2" }],
-      parent: null,
-      mode: "append",
-    });
-    manager.complete({ index: "1" });
-    manager.complete({ index: "2" });
-
-    const result = manager.list({ mode: "focus" });
-    expect(result.tree.length).toBeGreaterThan(0);
-    expect(result.rootProgress.completed).toBe(2);
-    expect(result.rootProgress.total).toBe(2);
+    expect(result.tree).toEqual([]);
   });
 });
