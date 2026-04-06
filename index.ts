@@ -216,13 +216,16 @@ export default function (pi: ExtensionAPI) {
           throw new TaskTreeError("INVALID_INPUT", "items array with at least one task is required");
         }
         
-        const result = getManager().createRoot({
+        const m = getManager();
+        const result = m.createRoot({
           title: p.title.trim(),
           description: typeof p.description === "string" ? p.description.trim() : undefined,
           items: p.items as { title: string; description?: string; parallelGroup?: string }[],
         });
 
-        const text = `Created task list: ${result.root.title}\n\n${formatListResult(result)}`;
+        // Get the full list result to show tasks
+        const listResult = m.list({ mode: "full" });
+        const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: listResult.tree, rootProgress: result.rootProgress })}`;
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);
@@ -310,7 +313,13 @@ export default function (pi: ExtensionAPI) {
       try {
         const p = params as { index?: unknown; title?: unknown; description?: unknown };
         const index = normalizeIndexOrTitle(p.index);
-        const description = p.description === null ? null : p.description as string | undefined;
+        // Handle null from JSON or string "null"/"undefined"
+        let description: string | undefined;
+        if (p.description === null || p.description === 'null' || p.description === 'undefined') {
+          description = undefined;
+        } else if (typeof p.description === 'string') {
+          description = p.description;
+        }
         const result = getManager().update({ index, title: p.title as string | undefined, description });
         return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }] };
       } catch (error) {

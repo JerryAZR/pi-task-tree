@@ -1,7 +1,1 @@
 {"version":1,"lastCompletedIndex":"5"}
-{"index":"1","parentIndex":"root","title":"Update src/types.ts with root management types","status":"ready","groupIndex":0}
-{"index":"2","parentIndex":"root","title":"Update src/errors.ts with new errors","status":"pending","groupIndex":1}
-{"index":"3","parentIndex":"root","title":"Update src/task-manager.ts for root management","status":"pending","groupIndex":2}
-{"index":"4","parentIndex":"root","title":"Update index.ts with task_create_root and task_breakdown","status":"pending","groupIndex":3}
-{"index":"5","parentIndex":"root","title":"Update tests","status":"pending","groupIndex":4}
-{"index":"6","parentIndex":"root","title":"Test and commit","status":"pending","groupIndex":5}

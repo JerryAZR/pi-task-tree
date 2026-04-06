@@ -2,10 +2,11 @@
 
 ## Context
 
-You are testing the task management tools (`task_*`) provided by the pi extension. These tools allow you to create hierarchical task lists, track progress, and organize complex engineering workflows.
+You are testing the task management tools (`task_*`) provided by the pi extension. These tools allow you to create multiple named task lists (roots), break down tasks hierarchically, track progress, and organize complex engineering workflows.
 
 You have access to the following tools:
-- `task_create_list` — Create, extend, or override task lists
+- `task_create_root` — Create a new named task list with initial tasks
+- `task_breakdown` — Add subtasks under an existing parent task
 - `task_update` — Update task title or description
 - `task_complete` — Mark a task as completed
 - `task_list` — View tasks in focus or full mode
@@ -25,61 +26,61 @@ Use the provided tools to complete the following operations. You may call any to
 
 ### Step 1
 
-Plan the migration by breaking it down into phases: research, implementation, testing, and deployment.
+Start a new task list called "Auth Migration" by creating a root with initial phases: research, implementation, testing, and deployment.
 
 ---
 
 ### Step 2
 
-Under the research phase, add specific tasks for evaluating the current system, reviewing OAuth2 providers, and comparing token strategies.
+Under the research phase (task "1"), add specific tasks for evaluating the current system, reviewing OAuth2 providers, and comparing token strategies.
 
 ---
 
 ### Step 3
 
-After evaluating the current system, you realize it shares a database with the billing service. Update that task to note this dependency.
+After evaluating the current system (task "1.1"), you realize it shares a database with the billing service. Update that task's description to note this dependency.
 
 ---
 
 ### Step 4
 
-The deployment phase needs to be split into staging and production rollout. Replace the original deployment task with these two separate tasks.
+The deployment phase (task "4") needs to be split into staging and production rollout. Use override mode to replace it with two separate tasks.
 
 ---
 
 ### Step 5
 
-Once the OAuth2 provider evaluation is complete, mark that task as done.
+Once the OAuth2 provider evaluation (task "1.2") is complete, mark that task as done.
 
 ---
 
 ### Step 6
 
-Check the current status of all tasks to see what's blocking what.
+Check the current status of all tasks to see what's ready, pending, or completed.
 
 ---
 
 ### Step 7
 
-Under the implementation phase, add subtasks for updating the login flow, implementing token refresh logic, and adding logout handling.
+Under the implementation phase (task "2"), add subtasks for updating the login flow, implementing token refresh logic, and adding logout handling.
 
 ---
 
 ### Step 8
 
-The testing phase needs to include integration tests and end-to-end tests. Add both as parallel tasks that can run together.
+The testing phase (task "3") needs to include integration tests and end-to-end tests. Add both as parallel tasks under the testing phase.
 
 ---
 
 ### Step 9
 
-Realize the implementation plan was too simplistic. Replace it entirely with a more detailed breakdown.
+The implementation plan (task "2") was too simplistic. Replace it entirely with a more detailed breakdown.
 
 ---
 
 ### Step 10
 
-Clear the entire plan since the migration has been cancelled.
+Clear the entire plan since the migration has been cancelled. (Delete the root or clear all tasks.)
 
 ---
 
@@ -109,7 +110,8 @@ After completing the operations above, report your experience:
 ### Common Patterns
 
 4. Describe how you figured out the correct patterns for:
-   - Creating top-level tasks vs. subtasks
+   - Creating a new task list (root)
+   - Adding top-level tasks vs. subtasks
    - Creating parallel tasks that can run together
    - Replacing/overwriting existing tasks
    - Clearing/deleting tasks
