@@ -830,6 +830,25 @@ describe("Task Query", () => {
   test("get non-existent rejected", () => {
     expect(() => manager.get({ query: "99" })).toThrow(TaskTreeError);
   });
+
+  test("get root task returns root with children", () => {
+    manager.createList({
+      items: [
+        { index: "1", title: "Task 1" },
+        { index: "2", title: "Task 2" },
+      ],
+      parent: null,
+    });
+
+    const result = manager.get({ query: "root" });
+    expect(result.task.index).toBe("root");
+    expect(result.task.title).toBe("Root");
+    expect(result.parent).toBeUndefined();
+    // Root's children should be the root-level tasks
+    expect(result.currentGroup.map(t => t.index)).toEqual(["1", "2"]);
+    expect(result.previousGroup).toEqual([]);
+    expect(result.nextGroup).toEqual([]);
+  });
 });
 
 describe("Task Update", () => {

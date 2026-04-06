@@ -627,7 +627,8 @@ export function createTaskManager(): ITaskManager {
       }
 
       // Get parent's children TaskList (must exist for valid task)
-      const parentChildren = parentIndex === ROOT_INDEX
+      // Root task has parentIndex === "", use store.rootList in that case
+      const parentChildren = (!parentIndex || parentIndex === ROOT_INDEX)
         ? store.rootList
         : tasks.get(parentIndex)!.children!;
 
@@ -635,9 +636,26 @@ export function createTaskManager(): ITaskManager {
         return { task, parent, previousGroup: [], currentGroup: [], nextGroup: [] };
       }
 
+      const groups = parentChildren.groups;
+
+      // Root task has groupIndex: -1 and represents all root-level tasks
+      // Return all children as current group with no previous/next
+      if (task.index === ROOT_INDEX) {
+        const getTasksFromIndices = (indices: string[]): Task[] =>
+          indices.map(idx => tasks.get(idx)!).filter(Boolean);
+        return {
+          task,
+          parent: undefined,
+          previousGroup: [],
+          currentGroup: getTasksFromIndices(
+            groups.flatMap(g => g.taskIndices)
+          ),
+          nextGroup: [],
+        };
+      }
+
       // Use task's groupIndex to locate groups
       const taskGroupIndex = task.groupIndex;
-      const groups = parentChildren.groups;
 
       // Validate groupIndex is valid
       if (taskGroupIndex < 0 || taskGroupIndex >= groups.length) {
