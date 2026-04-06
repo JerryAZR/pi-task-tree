@@ -694,6 +694,11 @@ export function createTaskManager(): ITaskManager {
         task = findTaskByTitle(tasks, index);
       }
 
+      // Reject modification of synthetic root task
+      if (task.index === ROOT_INDEX) {
+        throw ERRORS.ROOT_TASK();
+      }
+
       // Reject if task is completed
       if (task.status === "completed") {
         throw ERRORS.TASK_COMPLETED(task.index);

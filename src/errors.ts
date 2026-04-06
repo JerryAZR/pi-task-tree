@@ -40,6 +40,9 @@ export const ERRORS = {
   
   ALREADY_COMPLETED: (index: string) =>
     new TaskTreeError("ALREADY_COMPLETED", `Task "${index}" is already completed`),
+
+  ROOT_TASK: () =>
+    new TaskTreeError("ROOT_TASK", "Cannot modify the synthetic root task"),
 } as const;
 
 export type ErrorCode = keyof typeof ERRORS;

@@ -862,6 +862,10 @@ describe("Task Update", () => {
     expectError(() => manager.update({ index: "99", title: "New" }), "NOT_FOUND");
   });
 
+  test("update root task rejected", () => {
+    expectError(() => manager.update({ index: "root", title: "New" }), "ROOT_TASK");
+  });
+
   test("update completed task rejected", () => {
     manager.createList({
       items: [{ index: "1", title: "Task" }],
