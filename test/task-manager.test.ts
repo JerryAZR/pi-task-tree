@@ -91,14 +91,15 @@ describe("Task Creation", () => {
       );
     });
 
-    test("create under non-existent parent rejected", () => {
-      expectError(() =>
+    test("create under non-existent parent throws internal error", () => {
+      // Non-existent parent should throw an explicit internal error,
+      // not a generic NOT_FOUND - this helps expose bugs in initialization
+      expect(() =>
         manager.createList({
           items: [{ index: "99.1", title: "Child" }],
           parent: "99",
-        }),
-        "NOT_FOUND"
-      );
+        })
+      ).toThrow(/INTERNAL ERROR.*Parent task "99" not found/);
     });
   });
 
@@ -426,6 +427,62 @@ describe("Task Creation", () => {
       });
 
       expect(manager.getTaskStatus("1.2")).toBe("pending");
+    });
+
+    test("override mode at root level clears all tasks", () => {
+      // Create some root-level tasks
+      manager.createList({
+        items: [
+          { index: "1", title: "Task 1" },
+          { index: "2", title: "Task 2" },
+          { index: "3", title: "Task 3" },
+        ],
+        parent: null,
+      });
+
+      expect(manager.getTaskStatus("1")).toBe("ready");
+      expect(manager.getTaskStatus("2")).toBe("pending");
+      expect(manager.getTaskStatus("3")).toBe("pending");
+
+      // Override with empty list - clears all root tasks
+      const result = manager.createList({
+        items: [],
+        mode: "override",
+      });
+
+      const state = manager.getState();
+      expect(state.indexMap.has("1")).toBe(false);
+      expect(state.indexMap.has("2")).toBe(false);
+      expect(state.indexMap.has("3")).toBe(false);
+      expect(state.indexMap.size).toBe(1); // only root
+      expect(state.rootList.tasks.length).toBe(0);
+    });
+
+    test("override mode at root level replaces all tasks", () => {
+      // Create initial root tasks
+      manager.createList({
+        items: [
+          { index: "1", title: "Old 1" },
+          { index: "2", title: "Old 2" },
+        ],
+        parent: null,
+      });
+
+      // Override with new root tasks
+      const result = manager.createList({
+        items: [
+          { index: "1", title: "New 1" },
+          { index: "2", title: "New 2" },
+          { index: "3", title: "New 3" },
+        ],
+        mode: "override",
+      });
+
+      const state = manager.getState();
+      expect(state.indexMap.get("1")?.title).toBe("New 1");
+      expect(state.indexMap.get("2")?.title).toBe("New 2");
+      expect(state.indexMap.get("3")?.title).toBe("New 3");
+      expect(state.rootList.tasks.length).toBe(3);
     });
 
     test("override mode replaces existing children", () => {

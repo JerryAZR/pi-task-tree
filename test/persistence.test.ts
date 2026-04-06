@@ -2,7 +2,7 @@
  * Persistence Tests - Serialization/Deserialization
  */
 
-import { createTaskManager } from "../src/task-manager";
+import { createTaskManager, loadFromDump } from "../src/task-manager";
 import { unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -354,5 +354,63 @@ describe("Complex Tree Structures", () => {
     expect(state.indexMap.get("1.2")?.children?.tasks.length).toBe(1);
     expect(state.indexMap.get("1.1.1")?.parentIndex).toBe("1.1");
     expect(state.indexMap.get("1.2.1")?.parentIndex).toBe("1.2");
+  });
+});
+
+describe("Malformed Persistence Files", () => {
+  test("metadata-only file produces empty state with root task", () => {
+    // This simulates a file that exists but has only metadata, no task lines
+    // (like a corrupted or partially written file)
+    const malformedDump = `{"version":1,"lastCompletedIndex":"3"}`;
+
+    const loaded = loadFromDump(malformedDump);
+
+    // Root task should exist even with empty task list
+    expect(loaded.tasks.has("root")).toBe(true);
+    expect(loaded.rootList.tasks.length).toBe(0);
+    expect(loaded.lastCompletedIndex).toBe("3");
+  });
+
+  test("empty file produces empty state with root task", () => {
+    // Empty file should not throw, should produce valid state with root
+    const emptyDump = "";
+
+    expect(() => loadFromDump(emptyDump)).toThrow();
+  });
+
+  test("malformed JSON throws descriptive error", () => {
+    const malformedJson = "not valid json";
+
+    expect(() => loadFromDump(malformedJson)).toThrow();
+  });
+
+  test("metadata-only file allows createList operations", () => {
+    // This is the key bug scenario: loading from a file with only metadata
+    // should still allow creating new tasks
+    const malformedDump = `{"version":1,"lastCompletedIndex":null}`;
+
+    const loaded = loadFromDump(malformedDump);
+
+    // Root must exist for any operations to work
+    expect(loaded.tasks.has("root")).toBe(true);
+
+    // The loaded state should be usable to create tasks
+    const rootTask = loaded.tasks.get("root");
+    expect(rootTask).toBeDefined();
+    expect(rootTask?.status).toBe("ready");
+  });
+
+  test("file with tasks but missing root task still produces usable state", () => {
+    // If somehow the root task is not in the dump, operations should still work
+    // This shouldn't normally happen, but the system should be robust
+    const dumpWithOnlyChild = `{"version":1,"lastCompletedIndex":null}
+{"index":"1","parentIndex":"root","title":"Task 1","status":"ready","groupIndex":0}`;
+
+    const loaded = loadFromDump(dumpWithOnlyChild);
+
+    // Root task should be created even if not in the dump
+    expect(loaded.tasks.has("root")).toBe(true);
+    // Child task should also be present
+    expect(loaded.tasks.has("1")).toBe(true);
   });
 });

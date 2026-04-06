@@ -216,9 +216,24 @@ function saveToFile(lastCompletedIndex: string | null, tasks: Map<string, Task>)
 }
 
 // Load state from dump string (for testing without file I/O)
-function loadFromDump(content: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } {
+export function loadFromDump(content: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } {
   const { meta, tasks: persistedTasks } = parseDump(content);
   const { tasks: taskMap, rootList } = buildTreeFromTasks(persistedTasks);
+
+  // Ensure root task exists - it may be missing if the persistence file
+  // was malformed or only contained metadata (no task lines)
+  if (!taskMap.has(ROOT_INDEX)) {
+    const rootTask: Task = {
+      index: ROOT_INDEX,
+      parentIndex: "",
+      title: "Root",
+      status: "ready",
+      groupIndex: -1,
+      children: rootList,
+    };
+    taskMap.set(ROOT_INDEX, rootTask);
+  }
+
   return { lastCompletedIndex: meta.lastCompletedIndex, tasks: taskMap, rootList };
 }
 
@@ -522,8 +537,13 @@ export function createTaskManager(): ITaskManager {
       // parent is expected to be string or undefined (root level)
       const parentIndex = parent ?? ROOT_INDEX;
       const parentTask = tasks.get(parentIndex);
+      // Root task must always exist - if it doesn't, something is wrong
       if (!parentTask) {
-        throw ERRORS.NOT_FOUND(parentIndex);
+        throw new Error(
+          `INTERNAL ERROR: Parent task "${parentIndex}" not found in task map. ` +
+          `This indicates a bug in task initialization or persistence loading. ` +
+          `Task map size: ${tasks.size}, Has ROOT_INDEX: ${tasks.has(ROOT_INDEX)}`
+        );
       }
       if (parentTask.status === "completed") {
         throw ERRORS.TASK_COMPLETED(parentIndex);
