@@ -40,7 +40,7 @@ describe("Single Root Task", () => {
   test("single root task roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task 1" }],
+      items: [{ title: "Task 1" }],
     });
 
     const state = manager.getState();
@@ -55,9 +55,9 @@ describe("Single Root Task", () => {
     const manager = createTaskManager();
     manager.createList({
       items: [
-        { index: "1", title: "Task 1" },
-        { index: "2", title: "Task 2" },
-        { index: "3", title: "Task 3" },
+        { title: "Task 1" },
+        { title: "Task 2" },
+        { title: "Task 3" },
       ],
     });
 
@@ -76,10 +76,10 @@ describe("Nested Tree Structure", () => {
   test("single child roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
 
@@ -96,14 +96,14 @@ describe("Nested Tree Structure", () => {
   test("deep nesting roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Level 1" }],
+      items: [{ title: "Level 1" }],
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Level 2" }],
+      items: [{ title: "Level 2" }],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "1.1.1", title: "Level 3" }],
+      items: [{ title: "Level 3" }],
       parent: "1.1",
     });
 
@@ -118,16 +118,16 @@ describe("Nested Tree Structure", () => {
     const manager = createTaskManager();
     manager.createList({
       items: [
-        { index: "1", title: "Branch 1" },
-        { index: "2", title: "Branch 2" },
+        { title: "Branch 1" },
+        { title: "Branch 2" },
       ],
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child of 1" }],
+      items: [{ title: "Child of 1" }],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "2.1", title: "Child of 2" }],
+      items: [{ title: "Child of 2" }],
       parent: "2",
     });
 
@@ -147,13 +147,13 @@ describe("Parallel Groups", () => {
   test("parallel group preserved in roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "Task A", parallelGroup: "A" },
-        { index: "1.2", title: "Task B", parallelGroup: "A" },
-        { index: "1.3", title: "Task C" },
+        { title: "Task A", parallelGroup: "A" },
+        { title: "Task B", parallelGroup: "A" },
+        { title: "Task C" },
       ],
       parent: "1",
     });
@@ -168,14 +168,14 @@ describe("Parallel Groups", () => {
   test("multiple parallel groups roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "A1", parallelGroup: "A" },
-        { index: "1.2", title: "A2", parallelGroup: "A" },
-        { index: "1.3", title: "B1", parallelGroup: "B" },
-        { index: "1.4", title: "B2", parallelGroup: "B" },
+        { title: "A1", parallelGroup: "A" },
+        { title: "A2", parallelGroup: "A" },
+        { title: "B1", parallelGroup: "B" },
+        { title: "B2", parallelGroup: "B" },
       ],
       parent: "1",
     });
@@ -191,7 +191,7 @@ describe("Task Status", () => {
   test("pending status roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
     });
 
     const state = manager.getState();
@@ -201,7 +201,7 @@ describe("Task Status", () => {
   test("completed status roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
     });
     manager.complete({ index: "1" });
 
@@ -213,8 +213,8 @@ describe("Task Status", () => {
     const manager = createTaskManager();
     manager.createList({
       items: [
-        { index: "1", title: "First" },
-        { index: "2", title: "Second" },
+        { title: "First" },
+        { title: "Second" },
       ],
     });
     manager.complete({ index: "1" });
@@ -229,7 +229,7 @@ describe("Task Descriptions", () => {
   test("task with description roundtrip", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task", description: "A description" }],
+      items: [{ title: "Task", description: "A description" }],
     });
 
     const state = manager.getState();
@@ -239,7 +239,7 @@ describe("Task Descriptions", () => {
   test("task with multiline description", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task", description: "Line 1\nLine 2\nLine 3" }],
+      items: [{ title: "Task", description: "Line 1\nLine 2\nLine 3" }],
     });
 
     const state = manager.getState();
@@ -251,7 +251,7 @@ describe("lastCompletedIndex", () => {
   test("lastCompletedIndex updated on complete", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
     });
 
     expect(manager.getState().lastCompletedIndex).toBeNull();
@@ -264,10 +264,10 @@ describe("lastCompletedIndex", () => {
   test("lastCompletedIndex tracks deepest completed", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
 
@@ -282,37 +282,37 @@ describe("Complex Tree Structures", () => {
     const manager = createTaskManager();
     // Root 1 with child
     manager.createList({
-      items: [{ index: "1", title: "R1" }],
+      items: [{ title: "R1" }],
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
 
     // Root 2 with two children
     manager.createList({
-      items: [{ index: "2", title: "R2" }],
+      items: [{ title: "R2" }],
       mode: "append",
     });
     manager.createList({
       items: [
-        { index: "2.1", title: "C1" },
-        { index: "2.2", title: "C2" },
+        { title: "C1" },
+        { title: "C2" },
       ],
       parent: "2",
     });
 
     // Root 3 with nested children
     manager.createList({
-      items: [{ index: "3", title: "R3" }],
+      items: [{ title: "R3" }],
       mode: "append",
     });
     manager.createList({
-      items: [{ index: "3.1", title: "C" }],
+      items: [{ title: "C" }],
       parent: "3",
     });
     manager.createList({
-      items: [{ index: "3.1.1", title: "Grandchild" }],
+      items: [{ title: "Grandchild" }],
       parent: "3.1",
     });
 
@@ -329,21 +329,21 @@ describe("Complex Tree Structures", () => {
   test("sibling children with grandchildren", () => {
     const manager = createTaskManager();
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "Child A" },
-        { index: "1.2", title: "Child B" },
+        { title: "Child A" },
+        { title: "Child B" },
       ],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "1.1.1", title: "Grandchild of A" }],
+      items: [{ title: "Grandchild of A" }],
       parent: "1.1",
     });
     manager.createList({
-      items: [{ index: "1.2.1", title: "Grandchild of B" }],
+      items: [{ title: "Grandchild of B" }],
       parent: "1.2",
     });
 

@@ -45,8 +45,8 @@ export interface TaskStore {
 }
 
 // API input/output types
+// Note: index is auto-generated, not provided by caller
 export interface CreateListItem {
-  index: string;
   title: string;
   description?: string;
   parallelGroup?: string;
@@ -59,6 +59,7 @@ export interface task_create_list {
 }
 
 export interface task_get {
+  // Called indexOrTitle externally, query internally for legacy compatibility
   query: string;
 }
 

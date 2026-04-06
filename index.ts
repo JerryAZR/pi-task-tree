@@ -29,34 +29,32 @@ import type {
 import { TaskTreeError } from "./src/errors";
 
 // TypeBox schemas for LLM parameters
+// Note: task indices are auto-generated, not provided by callers
 const CreateListItemSchema = Type.Object({
-  index: Type.String({
-    description: "Hierarchical task identifier using dot notation (e.g., '1', '1.1', '1.2.1')"
-  }),
   title: Type.String({ description: "Short task title" }),
   description: Type.Optional(Type.String({ description: "Detailed task description" })),
   parallelGroup: Type.Optional(Type.String({
-    description: "Parallel group tag - Mark tasks in the list that can run together with the same tag. Omit to enforce ordering"
+    description: "Tag for parallel execution - tasks with the same tag can be worked on simultaneously. Sequential tasks have no tag (default)."
   })),
 });
 
 const TaskCreateListParams = Type.Object({
-  items: Type.Array(CreateListItemSchema, { description: "Tasks to create. Leave empty and use the override mode to delete the old list" }),
+  items: Type.Array(CreateListItemSchema, { description: "Tasks to create in order. Indices are auto-generated based on position." }),
   parent: Type.Optional(Type.String({
-    description: "Parent task index to create subtasks under (e.g., '1' for the list ['1.1, '1.2', ...]). Use to breakdown an existing task. Omit for root level tasks"
+    description: "Parent task index to add subtasks under. Use the index shown in list results. Omit for root level tasks."
   })),
   mode: Type.Optional(StringEnum(["new", "append", "override"] as const, {
-    description: "Creation mode: new (default), append, or override" })),
+    description: "Creation mode: new (default, fails if children exist), append (adds to existing), override (replaces existing)" })),
 });
 
 const TaskGetParams = Type.Object({
-  query: Type.String({ description: "Task index (e.g. '1.2') or title to look up" }),
+  indexOrTitle: Type.String({ description: "Task index (e.g., '1.2') or title to look up" }),
 });
 
 const TaskUpdateParams = Type.Object({
   index: Type.String({ description: "Task index or title to update" }),
-  title: Type.Optional(Type.String({ description: "New title to change to" })),
-  description: Type.Optional(Type.Union([Type.String(), Type.Null()] as const, { description: "New description, or null to clear" })),
+  title: Type.Optional(Type.String({ description: "New title - omit to leave unchanged" })),
+  description: Type.Optional(Type.Union([Type.String(), Type.Null()] as const, { description: "New description - omit to leave unchanged, null to clear" })),
 });
 
 const TaskCompleteParams = Type.Object({
@@ -218,11 +216,11 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  function normalizeQueryInput(query: unknown): string {
-    if (query === null || query === undefined || query === "") {
-      throw new TaskTreeError("INVALID_INPUT", "Query (task index or title) is required");
+  function normalizeIndexOrTitle(input: unknown): string {
+    if (input === null || input === undefined || input === "") {
+      throw new TaskTreeError("INVALID_INPUT", "Task index or title is required");
     }
-    return String(query).trim();
+    return String(input).trim();
   }
 
   // task_create_list
@@ -276,8 +274,8 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const query = normalizeQueryInput((params as { query?: unknown }).query);
-        const result = getManager().get({ query });
+        const indexOrTitle = normalizeIndexOrTitle((params as { indexOrTitle?: unknown }).indexOrTitle);
+        const result = getManager().get({ query: indexOrTitle });
         return { content: [{ type: "text", text: formatGetResult(result) }] };
       } catch (error) {
         return handleError(error);

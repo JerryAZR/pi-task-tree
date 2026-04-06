@@ -49,9 +49,9 @@ describe("Task Creation", () => {
     test("creates root list with 3 items, first ready, rest pending", () => {
       const result = manager.createList({
         items: [
-          { index: "1", title: "Task 1" },
-          { index: "2", title: "Task 2" },
-          { index: "3", title: "Task 3" },
+          { title: "Task 1" },
+          { title: "Task 2" },
+          { title: "Task 3" },
         ],
         parent: null,
       });
@@ -65,29 +65,16 @@ describe("Task Creation", () => {
 
     test("second root creation with duplicate index is rejected", () => {
       manager.createList({
-        items: [{ index: "1", title: "Task 1" }],
+        items: [{ title: "Task 1" }],
         parent: null,
       });
 
       expectError(() =>
         manager.createList({
-          items: [{ index: "1", title: "Duplicate" }],
+          items: [{ title: "Duplicate" }],
           parent: null,
         }),
         "LIST_EXISTS"
-      );
-    });
-
-    test("duplicate indices in same call are rejected", () => {
-      expectError(() =>
-        manager.createList({
-          items: [
-            { index: "1", title: "Task 1" },
-            { index: "1", title: "Duplicate" },
-          ],
-          parent: null,
-        }),
-        "OUT_OF_ORDER"
       );
     });
 
@@ -96,7 +83,7 @@ describe("Task Creation", () => {
       // not a generic NOT_FOUND - this helps expose bugs in initialization
       expect(() =>
         manager.createList({
-          items: [{ index: "99.1", title: "Child" }],
+          items: [{ title: "Child" }],
           parent: "99",
         })
       ).toThrow(/INTERNAL ERROR.*Parent task "99" not found/);
@@ -106,14 +93,14 @@ describe("Task Creation", () => {
   describe("nested list status inheritance", () => {
     test("inherits parent status (ready)", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
 
       const result = manager.createList({
         items: [
-          { index: "1.1", title: "Child 1" },
-          { index: "1.2", title: "Child 2" },
+          { title: "Child 1" },
+          { title: "Child 2" },
         ],
         parent: "1",
       });
@@ -127,11 +114,11 @@ describe("Task Creation", () => {
     test("inherits parent status (pending)", () => {
       // Create "1" (ready) and "2" (pending by being second)
       manager.createList({
-        items: [{ index: "1", title: "Root 1" }],
+        items: [{ title: "Root 1" }],
         parent: null,
       });
       manager.createList({
-        items: [{ index: "2", title: "Root 2" }],
+        items: [{ title: "Root 2" }],
         parent: null,
         mode: "append",
       });
@@ -139,8 +126,8 @@ describe("Task Creation", () => {
       // Create children under "2" (pending parent)
       manager.createList({
         items: [
-          { index: "2.1", title: "Child 1" },
-          { index: "2.2", title: "Child 2" },
+          { title: "Child 1" },
+          { title: "Child 2" },
         ],
         parent: "2",
       });
@@ -152,16 +139,16 @@ describe("Task Creation", () => {
 
     test("parallel group inheritance", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
 
       manager.createList({
         items: [
-          { index: "1.1", title: "A1", parallelGroup: "A" },
-          { index: "1.2", title: "A2", parallelGroup: "A" },
-          { index: "1.3", title: "B1", parallelGroup: "B" },
-          { index: "1.4", title: "B2", parallelGroup: "B" },
+          { title: "A1", parallelGroup: "A" },
+          { title: "A2", parallelGroup: "A" },
+          { title: "B1", parallelGroup: "B" },
+          { title: "B2", parallelGroup: "B" },
         ],
         parent: "1",
       });
@@ -176,19 +163,19 @@ describe("Task Creation", () => {
 
     test("deep expansion", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
-        items: [{ index: "1.1", title: "Level 2" }],
+        items: [{ title: "Level 2" }],
         parent: "1",
       });
 
       manager.createList({
         items: [
-          { index: "1.1.1", title: "Deep 1" },
-          { index: "1.1.2", title: "Deep 2" },
-          { index: "1.1.3", title: "Deep 3" },
+          { title: "Deep 1" },
+          { title: "Deep 2" },
+          { title: "Deep 3" },
         ],
         parent: "1.1",
       });
@@ -199,84 +186,17 @@ describe("Task Creation", () => {
     });
   });
 
-  describe("index validation", () => {
-    test("invalid index scope rejected", () => {
-      manager.createList({
-        items: [{ index: "1", title: "Root" }],
-        parent: null,
-      });
-
-      expect(() =>
-        manager.createList({
-          items: [{ index: "2", title: "Wrong scope" }],
-          parent: "1",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
-    test("depth violation rejected", () => {
-      manager.createList({
-        items: [{ index: "1", title: "Root" }],
-        parent: null,
-      });
-
-      expect(() =>
-        manager.createList({
-          items: [
-            { index: "1.1", title: "Child" },
-            { index: "1.1.1", title: "Grandchild" },
-          ],
-          parent: "1",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
-    test("gap in sequence rejected (create)", () => {
-      manager.createList({
-        items: [{ index: "1", title: "Root" }],
-        parent: null,
-      });
-
-      expect(() =>
-        manager.createList({
-          items: [
-            { index: "1.1", title: "Child 1" },
-            { index: "1.3", title: "Child 3" },
-          ],
-          parent: "1",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
-    test("append with gap rejected", () => {
-      manager.createList({
-        items: [{ index: "1", title: "Root" }],
-        parent: null,
-      });
-      manager.createList({
-        items: [{ index: "1.1", title: "Child 1" }],
-        parent: "1",
-      });
-
-      expect(() =>
-        manager.createList({
-          items: [{ index: "1.3", title: "Child 3" }],
-          parent: "1",
-          mode: "append",
-        })
-      ).toThrow(TaskTreeError);
-    });
-
+  describe("parallel group behavior", () => {
     test("append with same group label creates new group, pending until previous complete", () => {
       // Create root with one parallel group
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Group1 Task 1", parallelGroup: "group-a" },
-          { index: "1.2", title: "Group1 Task 2", parallelGroup: "group-a" },
+          { title: "Group1 Task 1", parallelGroup: "group-a" },
+          { title: "Group1 Task 2", parallelGroup: "group-a" },
         ],
         parent: "1",
       });
@@ -287,7 +207,7 @@ describe("Task Creation", () => {
 
       // Append with same group label - should create NEW group, not extend group-a
       manager.createList({
-        items: [{ index: "1.3", title: "Group2 Task 1", parallelGroup: "group-a" }],
+        items: [{ title: "Group2 Task 1", parallelGroup: "group-a" }],
         parent: "1",
         mode: "append",
       });
@@ -310,14 +230,14 @@ describe("Task Creation", () => {
     test("append new parallel group after second group completes", () => {
       // Create root with two parallel groups
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Group1 Task 1", parallelGroup: "group-a" },
-          { index: "1.2", title: "Group1 Task 2", parallelGroup: "group-a" },
-          { index: "1.3", title: "Group2 Task 1", parallelGroup: "group-b" },
+          { title: "Group1 Task 1", parallelGroup: "group-a" },
+          { title: "Group1 Task 2", parallelGroup: "group-a" },
+          { title: "Group2 Task 1", parallelGroup: "group-b" },
         ],
         parent: "1",
       });
@@ -340,7 +260,7 @@ describe("Task Creation", () => {
       // Append a new third group
       manager.createList({
         items: [
-          { index: "1.4", title: "Group3 Task 1", parallelGroup: "group-c" },
+          { title: "Group3 Task 1", parallelGroup: "group-c" },
         ],
         parent: "1",
         mode: "append",
@@ -354,14 +274,14 @@ describe("Task Creation", () => {
   describe("mode behaviors", () => {
     test("expand completed task rejected", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.complete({ index: "1" });
 
       expect(() =>
         manager.createList({
-          items: [{ index: "1.1", title: "Child" }],
+          items: [{ title: "Child" }],
           parent: "1",
         })
       ).toThrow(TaskTreeError);
@@ -369,17 +289,17 @@ describe("Task Creation", () => {
 
     test("new mode when children exist rejected", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
-        items: [{ index: "1.1", title: "Child" }],
+        items: [{ title: "Child" }],
         parent: "1",
       });
 
       expect(() =>
         manager.createList({
-          items: [{ index: "1.1", title: "New child" }],
+          items: [{ title: "New child" }],
           parent: "1",
           mode: "new",
         })
@@ -388,13 +308,13 @@ describe("Task Creation", () => {
 
     test("append after siblings complete shows new task ready", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Child 1" },
-          { index: "1.2", title: "Child 2" },
+          { title: "Child 1" },
+          { title: "Child 2" },
         ],
         parent: "1",
       });
@@ -402,7 +322,7 @@ describe("Task Creation", () => {
       manager.complete({ index: "1.2" });
 
       const result = manager.createList({
-        items: [{ index: "1.3", title: "Child 3" }],
+        items: [{ title: "Child 3" }],
         parent: "1",
         mode: "append",
       });
@@ -412,16 +332,16 @@ describe("Task Creation", () => {
 
     test("append with incomplete siblings shows new task pending", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
-        items: [{ index: "1.1", title: "Child 1" }],
+        items: [{ title: "Child 1" }],
         parent: "1",
       });
 
       const result = manager.createList({
-        items: [{ index: "1.2", title: "Child 2" }],
+        items: [{ title: "Child 2" }],
         parent: "1",
         mode: "append",
       });
@@ -433,9 +353,9 @@ describe("Task Creation", () => {
       // Create some root-level tasks
       manager.createList({
         items: [
-          { index: "1", title: "Task 1" },
-          { index: "2", title: "Task 2" },
-          { index: "3", title: "Task 3" },
+          { title: "Task 1" },
+          { title: "Task 2" },
+          { title: "Task 3" },
         ],
         parent: null,
       });
@@ -462,8 +382,8 @@ describe("Task Creation", () => {
       // Create initial root tasks
       manager.createList({
         items: [
-          { index: "1", title: "Old 1" },
-          { index: "2", title: "Old 2" },
+          { title: "Old 1" },
+          { title: "Old 2" },
         ],
         parent: null,
       });
@@ -471,9 +391,9 @@ describe("Task Creation", () => {
       // Override with new root tasks
       const result = manager.createList({
         items: [
-          { index: "1", title: "New 1" },
-          { index: "2", title: "New 2" },
-          { index: "3", title: "New 3" },
+          { title: "New 1" },
+          { title: "New 2" },
+          { title: "New 3" },
         ],
         mode: "override",
       });
@@ -487,22 +407,22 @@ describe("Task Creation", () => {
 
     test("override mode replaces existing children", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Old 1" },
-          { index: "1.2", title: "Old 2" },
+          { title: "Old 1" },
+          { title: "Old 2" },
         ],
         parent: "1",
       });
 
       manager.createList({
         items: [
-          { index: "1.1", title: "New 1" },
-          { index: "1.2", title: "New 2" },
-          { index: "1.3", title: "New 3" },
+          { title: "New 1" },
+          { title: "New 2" },
+          { title: "New 3" },
         ],
         parent: "1",
         mode: "override",
@@ -518,21 +438,21 @@ describe("Task Creation", () => {
 
     test("override mode removes old children when new list is shorter", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Old 1" },
-          { index: "1.2", title: "Old 2" },
-          { index: "1.3", title: "Old 3" },
+          { title: "Old 1" },
+          { title: "Old 2" },
+          { title: "Old 3" },
         ],
         parent: "1",
       });
 
       // Override with only one child
       manager.createList({
-        items: [{ index: "1.1", title: "New 1" }],
+        items: [{ title: "New 1" }],
         parent: "1",
         mode: "override",
       });
@@ -547,13 +467,13 @@ describe("Task Creation", () => {
 
     test("override mode with empty items clears children", () => {
       manager.createList({
-        items: [{ index: "1", title: "Root" }],
+        items: [{ title: "Root" }],
         parent: null,
       });
       manager.createList({
         items: [
-          { index: "1.1", title: "Child 1" },
-          { index: "1.2", title: "Child 2" },
+          { title: "Child 1" },
+          { title: "Child 2" },
         ],
         parent: "1",
       });
@@ -591,7 +511,7 @@ describe("Task Completion", () => {
 
   test("complete ready task marks it completed", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
       parent: null,
     });
 
@@ -601,11 +521,11 @@ describe("Task Completion", () => {
 
   test("pending task is rejected", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task 1" }],
+      items: [{ title: "Task 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "2", title: "Task 2" }],
+      items: [{ title: "Task 2" }],
       parent: null,
       mode: "append",
     });
@@ -615,11 +535,11 @@ describe("Task Completion", () => {
 
   test("task with incomplete children rejected", () => {
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
 
@@ -628,7 +548,7 @@ describe("Task Completion", () => {
 
   test("already completed task rejected", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
       parent: null,
     });
     manager.complete({ index: "1" });
@@ -638,13 +558,13 @@ describe("Task Completion", () => {
 
   test("completing first group unblocks second", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root" }],
+      items: [{ title: "Root" }],
       parent: null,
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "Group A", parallelGroup: "A" },
-        { index: "1.2", title: "Group B", parallelGroup: "B" },
+        { title: "Group A", parallelGroup: "A" },
+        { title: "Group B", parallelGroup: "B" },
       ],
       parent: "1",
     });
@@ -655,14 +575,14 @@ describe("Task Completion", () => {
 
   test("completing one in parallel group doesn't unblock next group", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root" }],
+      items: [{ title: "Root" }],
       parent: null,
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "A1", parallelGroup: "A" },
-        { index: "1.2", title: "A2", parallelGroup: "A" },
-        { index: "1.3", title: "B1", parallelGroup: "B" },
+        { title: "A1", parallelGroup: "A" },
+        { title: "A2", parallelGroup: "A" },
+        { title: "B1", parallelGroup: "B" },
       ],
       parent: "1",
     });
@@ -674,14 +594,14 @@ describe("Task Completion", () => {
 
   test("completing parallel group unblocks next", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root" }],
+      items: [{ title: "Root" }],
       parent: null,
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "A1", parallelGroup: "A" },
-        { index: "1.2", title: "A2", parallelGroup: "A" },
-        { index: "1.3", title: "B1", parallelGroup: "B" },
+        { title: "A1", parallelGroup: "A" },
+        { title: "A2", parallelGroup: "A" },
+        { title: "B1", parallelGroup: "B" },
       ],
       parent: "1",
     });
@@ -693,11 +613,11 @@ describe("Task Completion", () => {
 
   test("completing child requires parent ready", () => {
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
 
@@ -707,11 +627,11 @@ describe("Task Completion", () => {
 
   test("completing root unblocks next root", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root 1" }],
+      items: [{ title: "Root 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "2", title: "Root 2" }],
+      items: [{ title: "Root 2" }],
       parent: null,
       mode: "append",
     });
@@ -722,11 +642,11 @@ describe("Task Completion", () => {
 
   test("completing parent marks completed", () => {
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
     manager.complete({ index: "1.1" });
@@ -738,8 +658,8 @@ describe("Task Completion", () => {
   test("complete via ambiguous title rejected", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Task" },
-        { index: "2", title: "Task" },
+        { title: "Task" },
+        { title: "Task" },
       ],
       parent: null,
     });
@@ -750,8 +670,8 @@ describe("Task Completion", () => {
   test("complete result includes accurate rootProgress", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Root 1" },
-        { index: "2", title: "Root 2" },
+        { title: "Root 1" },
+        { title: "Root 2" },
       ],
       parent: null,
     });
@@ -770,7 +690,7 @@ describe("Task Query", () => {
 
   test("get by index returns detail", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task", description: "Description" }],
+      items: [{ title: "Task", description: "Description" }],
       parent: null,
     });
 
@@ -783,8 +703,8 @@ describe("Task Query", () => {
   test("get by unique title returns task", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Unique" },
-        { index: "2", title: "Also Unique" },
+        { title: "Unique" },
+        { title: "Also Unique" },
       ],
       parent: null,
     });
@@ -795,14 +715,14 @@ describe("Task Query", () => {
 
   test("get returns correct group context", () => {
     manager.createList({
-      items: [{ index: "1", title: "Parent" }],
+      items: [{ title: "Parent" }],
       parent: null,
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "A1", parallelGroup: "A" },
-        { index: "1.2", title: "A2", parallelGroup: "A" },
-        { index: "1.3", title: "B1", parallelGroup: "B" },
+        { title: "A1", parallelGroup: "A" },
+        { title: "A2", parallelGroup: "A" },
+        { title: "B1", parallelGroup: "B" },
       ],
       parent: "1",
     });
@@ -818,8 +738,8 @@ describe("Task Query", () => {
   test("ambiguous title rejected", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Task" },
-        { index: "2", title: "Task" },
+        { title: "Task" },
+        { title: "Task" },
       ],
       parent: null,
     });
@@ -834,8 +754,8 @@ describe("Task Query", () => {
   test("get root task returns root with children", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Task 1" },
-        { index: "2", title: "Task 2" },
+        { title: "Task 1" },
+        { title: "Task 2" },
       ],
       parent: null,
     });
@@ -868,7 +788,7 @@ describe("Task Update", () => {
 
   test("update completed task rejected", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
       parent: null,
     });
     manager.complete({ index: "1" });
@@ -878,7 +798,7 @@ describe("Task Update", () => {
 
   test("update title", () => {
     manager.createList({
-      items: [{ index: "1", title: "Old Title" }],
+      items: [{ title: "Old Title" }],
       parent: null,
     });
 
@@ -889,7 +809,7 @@ describe("Task Update", () => {
 
   test("clear description", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task", description: "Desc" }],
+      items: [{ title: "Task", description: "Desc" }],
       parent: null,
     });
 
@@ -899,7 +819,7 @@ describe("Task Update", () => {
 
   test("update description with value", () => {
     manager.createList({
-      items: [{ index: "1", title: "Task" }],
+      items: [{ title: "Task" }],
       parent: null,
     });
 
@@ -910,8 +830,8 @@ describe("Task Update", () => {
   test("update via ambiguous title rejected", () => {
     manager.createList({
       items: [
-        { index: "1", title: "Task" },
-        { index: "2", title: "Task" },
+        { title: "Task" },
+        { title: "Task" },
       ],
       parent: null,
     });
@@ -935,24 +855,24 @@ describe("Task List", () => {
 
   test("focus mode fresh start shows oldest leaf", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root 1" }],
+      items: [{ title: "Root 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "L2" }],
+      items: [{ title: "L2" }],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "1.1.1", title: "Leaf" }],
+      items: [{ title: "Leaf" }],
       parent: "1.1",
     });
     manager.createList({
-      items: [{ index: "2", title: "Root 2" }],
+      items: [{ title: "Root 2" }],
       parent: null,
       mode: "append",
     });
     manager.createList({
-      items: [{ index: "2.1", title: "L2" }],
+      items: [{ title: "L2" }],
       parent: "2",
     });
 
@@ -969,21 +889,21 @@ describe("Task List", () => {
   test("focus mode shows path to last completed task", () => {
     // Create tree 1 with subtree
     manager.createList({
-      items: [{ index: "1", title: "Root 1" }],
+      items: [{ title: "Root 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "1.1.1", title: "Leaf" }],
+      items: [{ title: "Leaf" }],
       parent: "1.1",
     });
 
     // Create tree 2
     manager.createList({
-      items: [{ index: "2", title: "Root 2" }],
+      items: [{ title: "Root 2" }],
       parent: null,
       mode: "append",
     });
@@ -1007,24 +927,24 @@ describe("Task List", () => {
 
   test("full mode shows entire tree", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root 1" }],
+      items: [{ title: "Root 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "1.1", title: "L2" }],
+      items: [{ title: "L2" }],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "1.1.1", title: "Leaf" }],
+      items: [{ title: "Leaf" }],
       parent: "1.1",
     });
     manager.createList({
-      items: [{ index: "2", title: "Root 2" }],
+      items: [{ title: "Root 2" }],
       parent: null,
       mode: "append",
     });
     manager.createList({
-      items: [{ index: "2.1", title: "L2" }],
+      items: [{ title: "L2" }],
       parent: "2",
     });
 
@@ -1035,11 +955,11 @@ describe("Task List", () => {
 
   test("focus mode all done shows root tasks", () => {
     manager.createList({
-      items: [{ index: "1", title: "Root 1" }],
+      items: [{ title: "Root 1" }],
       parent: null,
     });
     manager.createList({
-      items: [{ index: "2", title: "Root 2" }],
+      items: [{ title: "Root 2" }],
       parent: null,
       mode: "append",
     });

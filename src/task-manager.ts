@@ -317,8 +317,8 @@ function validateModeAndPreprocess(
   return hasChildren ?? false;
 }
 
-// Helper: Validate indices and build task objects
-function validateAndCreateTasks(
+// Helper: Generate indices and build task objects
+function generateAndCreateTasks(
   items: task_create_list["items"],
   scopePrefix: string,
   startIndex: number
@@ -327,16 +327,11 @@ function validateAndCreateTasks(
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const expectedIndex = scopePrefix + String(startIndex + i);
-
-    // Validate exact index match
-    if (item.index !== expectedIndex) {
-      throw ERRORS.OUT_OF_ORDER(item.index, expectedIndex);
-    }
+    const index = scopePrefix + String(startIndex + i);
 
     // Build task object
     taskObjects.push({
-      index: item.index,
+      index,
       parentIndex: scopePrefix === "" ? ROOT_INDEX : scopePrefix.slice(0, -1),
       title: item.title,
       description: item.description,
@@ -556,8 +551,8 @@ export function createTaskManager(): ITaskManager {
       const existingCount = existingChildren?.tasks.length ?? 0;
       const startIndex = isAppending ? existingCount + 1 : 1;
 
-      // Validate indices and create task objects
-      const taskObjects = validateAndCreateTasks(items, scopePrefix, startIndex);
+      // Generate indices and create task objects
+      const taskObjects = generateAndCreateTasks(items, scopePrefix, startIndex);
 
       // Add new tasks to indexMap (but don't set groupIndex yet)
       for (const task of taskObjects) {

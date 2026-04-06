@@ -76,21 +76,21 @@ describe("Batch Randomized Testing", () => {
     // Fixed initial state
     manager.createList({
       items: [
-        { index: "1", title: "Root 1" },
-        { index: "2", title: "Root 2" },
-        { index: "3", title: "Root 3" },
+        { title: "Root 1" },
+        { title: "Root 2" },
+        { title: "Root 3" },
       ],
       parent: null,
     });
     manager.createList({
       items: [
-        { index: "1.1", title: "Child 1" },
-        { index: "1.2", title: "Child 2" },
+        { title: "Child 1" },
+        { title: "Child 2" },
       ],
       parent: "1",
     });
     manager.createList({
-      items: [{ index: "2.1", title: "Child" }],
+      items: [{ title: "Child" }],
       parent: "2",
     });
     checkInvariants();
@@ -173,8 +173,8 @@ describe("Batch Randomized Testing", () => {
     // Fixed initial state
     manager.createList({
       items: [
-        { index: "1", title: "Root 1" },
-        { index: "2", title: "Root 2" },
+        { title: "Root 1" },
+        { title: "Root 2" },
       ],
       parent: null,
     });
@@ -184,7 +184,7 @@ describe("Batch Randomized Testing", () => {
 
     for (let i = 0; i < iterations; i++) {
       const before = snapshotState();
-      const op = Math.floor(Math.random() * 5);
+      const op = Math.floor(Math.random() * 4);
 
       expect(() => {
         switch (op) {
@@ -199,15 +199,8 @@ describe("Batch Randomized Testing", () => {
             break;
           case 3:
             manager.createList({
-              items: [{ index: "1", title: "Duplicate" }], // already exists
+              items: [{ title: "New task" }], // with existing tasks, this will throw LIST_EXISTS
               parent: null,
-            });
-            break;
-          case 4:
-            manager.createList({
-              items: [{ index: "X", title: "Bad index" }],
-              parent: null,
-              mode: "append",
             });
             break;
         }
