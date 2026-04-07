@@ -128,6 +128,48 @@ describe("Task Creation", () => {
     });
   });
 
+  describe("addTask (extend plan)", () => {
+    test("adds tasks to root level", () => {
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Task 1" }],
+      });
+
+      manager.addTask({
+        items: [{ title: "Task 2" }, { title: "Task 3" }],
+      });
+
+      const state = manager.getState();
+      expect(state.indexMap.get("2")?.title).toBe("Task 2");
+      expect(state.indexMap.get("3")?.title).toBe("Task 3");
+    });
+
+    test("addTask requires active root", () => {
+      expect(() =>
+        manager.addTask({
+          items: [{ title: "Orphan" }],
+        })
+      ).toThrow("No active task list");
+    });
+
+    test("override mode replaces root tasks", () => {
+      manager.createRoot({
+        title: "Plan",
+        items: [{ title: "Old 1" }, { title: "Old 2" }],
+      });
+
+      manager.addTask({
+        items: [{ title: "New 1" }],
+        mode: "override",
+      });
+
+      const state = manager.getState();
+      expect(state.indexMap.has("1")).toBe(true);
+      expect(state.indexMap.get("1")?.title).toBe("New 1");
+      expect(state.indexMap.has("2")).toBe(false);
+    });
+  });
+
   describe("mode behaviors", () => {
     test("override mode replaces existing children", () => {
       manager.createRoot({

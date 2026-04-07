@@ -72,6 +72,13 @@ export interface task_breakdown {
   mode?: "new" | "append" | "override";
 }
 
+// Add tasks to root of active plan
+// This is a convenience wrapper around breakdown with parent=root
+export interface task_add_task {
+  items: CreateListItem[];
+  mode?: "new" | "append" | "override";
+}
+
 export interface task_list_roots_result {
   roots: Root[];
   activeId: string | null;
@@ -147,4 +154,5 @@ export interface TaskManager {
   update(params: task_update): task_update_result;
   close(params: task_close): task_close_result;
   list(params: task_list): task_list_result;
+  addTask(params: task_add_task): task_list_result;
 }

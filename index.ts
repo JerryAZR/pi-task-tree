@@ -31,6 +31,13 @@ const TaskBreakdownParams = Type.Object({
   })),
 });
 
+const TaskAddTaskParams = Type.Object({
+  items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
+  mode: Type.Optional(StringEnum(["append", "override"] as const, {
+    description: "Mode: append (adds to existing), override (replaces)"
+  })),
+});
+
 const TaskGetParams = Type.Object({
   indexOrTitle: Type.String({ description: "Task index (e.g., '1.2') or title to look up" }),
 });
@@ -221,6 +228,44 @@ export default function (pi: ExtensionAPI) {
 
         const listResult = m.list({ mode: "full" });
         const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: listResult.tree, rootProgress: result.rootProgress })}`;
+        return { content: [{ type: "text", text }] };
+      } catch (error) {
+        return handleError(error);
+      }
+    },
+  });
+
+  // task_add_task
+  pi.registerTool({
+    name: "task_add_task",
+    label: "Task Add",
+    description: "Add tasks to the root of the active plan. Use this to extend an existing plan.",
+    promptSnippet: "Add tasks to an existing plan",
+    promptGuidelines: [
+      "Use this tool to add new tasks to the root level of an existing plan",
+      "Requires an active task list (created with task_create_root)",
+      "Use task_breakdown to add subtasks under specific tasks"
+    ],
+    parameters: TaskAddTaskParams,
+
+    async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
+      try {
+        const p = params as { items?: unknown; mode?: unknown };
+        
+        if (!Array.isArray(p.items) || p.items.length === 0) {
+          throw new TaskTreeError("INVALID_INPUT", "items array with at least one task is required");
+        }
+        
+        const count = p.items.length;
+        const result = getManager().addTask({
+          items: p.items as { title: string; description?: string }[],
+          mode: p.mode as "append" | "override" | undefined,
+        });
+
+        const text = count === 1
+          ? `Added 1 task`
+          : `Added ${count} tasks`;
+        
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);

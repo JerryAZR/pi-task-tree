@@ -657,6 +657,13 @@ export function createTaskManager(): ITaskManager {
     list(params: task_list): { tree: Task[]; rootProgress: Progress } {
       return doList(params.mode ?? "focus");
     },
+
+    addTask(params: { items: CreateListItem[]; mode?: string }): { tree: Task[]; rootProgress: Progress } {
+      if (!activeId) {
+        throw ERRORS.NO_ACTIVE_ROOT();
+      }
+      return doCreateList(params.items, ROOT_INDEX, params.mode ?? "append");
+    },
   };
 }
 
