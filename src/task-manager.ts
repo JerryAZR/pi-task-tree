@@ -518,10 +518,7 @@ export function createTaskManager(): ITaskManager {
       for (let i = 0; i < children.length; i++) {
         const task = children[i];
         const newIndex = prefix + String(i + 1);
-        // Update map: remove old index, add new index
-        if (task.index && task.index !== newIndex) {
-          tasks.delete(task.index);
-        }
+        // Just set - Map.set overwrites, no need to delete first
         task.index = newIndex;
         tasks.set(newIndex, task);
         // Recursively assign indices to children
