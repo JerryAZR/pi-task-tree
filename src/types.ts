@@ -130,10 +130,12 @@ export interface task_delete_result {
 }
 
 // list modes:
-// - focus: DFS, recurses only into first incomplete task at each level (default)
-// - full: DFS, includes all tasks
+// - focus (default): DFS recurses into first incomplete task at each level
+// - path: DFS recurses into first incomplete AND shows path to target task
+// - full: DFS includes all tasks
 export interface task_list {
-  mode?: "focus" | "full";
+  mode?: "focus" | "path" | "full";
+  target?: string;  // For path mode: show path to this task
 }
 
 export interface task_list_result {

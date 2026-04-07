@@ -627,3 +627,72 @@ describe("Root Management", () => {
     expect(roots.roots.length).toBe(0);
   });
 });
+
+describe("List Modes", () => {
+  let manager: ReturnType<typeof createTaskManager>;
+
+  beforeEach(() => {
+    manager = createTaskManager();
+  });
+
+  test("focus mode shows working path", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task 1" }, { title: "Task 2" }],
+    });
+
+    manager.breakdown({
+      items: [{ title: "Child 1" }, { title: "Child 2" }],
+      parent: "1",
+    });
+
+    // Focus mode: first incomplete is 1, show its children
+    const focus = manager.list({ mode: "focus" });
+    const indices = focus.tree.map(t => t.index);
+    expect(indices).toContain("1");
+    expect(indices).toContain("1.1");
+    // Task 2 shown but not recursed into
+    expect(indices).toContain("2");
+    expect(indices).not.toContain("2.1");
+  });
+
+  test("path mode shows path to target without expanding siblings", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task 1" }, { title: "Task 2" }],
+    });
+
+    manager.breakdown({
+      items: [{ title: "Child 1" }, { title: "Child 2" }],
+      parent: "1",
+    });
+
+    // Path to 2: show path without expanding siblings
+    const path = manager.list({ mode: "path", target: "2" });
+    const indices = path.tree.map(t => t.index);
+    expect(indices).toContain("1");
+    expect(indices).toContain("2");
+    // Should NOT expand children of 1 since 2 is not under 1
+    expect(indices).not.toContain("1.1");
+    expect(indices).not.toContain("1.2");
+  });
+
+  test("full mode shows all tasks", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task 1" }, { title: "Task 2" }],
+    });
+
+    manager.breakdown({
+      items: [{ title: "Child 1" }, { title: "Child 2" }],
+      parent: "1",
+    });
+
+    const full = manager.list({ mode: "full" });
+    const indices = full.tree.map(t => t.index);
+    expect(indices).toContain("1");
+    expect(indices).toContain("1.1");
+    expect(indices).toContain("1.2");
+    expect(indices).toContain("2");
+  });
+});

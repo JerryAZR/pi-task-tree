@@ -482,7 +482,7 @@ export function createTaskManager(): ITaskManager {
   // List (Internal)
   // ============================================================================
 
-  function doList(listMode: string): { tree: Task[]; rootProgress: Progress } {
+  function doList(listMode: string, targetIndex?: string): { tree: Task[]; rootProgress: Progress } {
     const mode = listMode || "focus";
     const rootListLocal = store.rootList;
 
@@ -500,13 +500,10 @@ export function createTaskManager(): ITaskManager {
 
     const tree: Task[] = [];
 
-    // WHAT: DFS traversal with smart expansion
-    // WHY: Focus shows the "working path" by recursing into first incomplete task
+    // WHAT: DFS traversal with mode-based expansion
+    // WHY: Different modes control what gets recursed into
     function dfs(children: TaskList | undefined) {
       if (!children) return;
-
-      // Find first incomplete task for focus mode
-      let firstIncompleteFound = false;
 
       for (const task of children.tasks) {
         // Skip deleted tasks
@@ -514,20 +511,29 @@ export function createTaskManager(): ITaskManager {
 
         tree.push(task);
 
-        // WHAT: In focus mode, only recurse into first incomplete task
-        // WHY: Shows the path from root to current working task
-        if (mode === "focus" && !firstIncompleteFound && !task.completed) {
-          firstIncompleteFound = true;
-          if (task.children && task.children.tasks.length > 0) {
-            dfs(task.children);
-          }
-        } else if (mode === "full") {
-          // Full mode: recurse into all tasks
-          if (task.children && task.children.tasks.length > 0) {
-            dfs(task.children);
-          }
+        if (!task.children || task.children.tasks.length === 0) {
+          continue;
         }
-        // Other incomplete tasks in focus mode: show but don't recurse
+
+        if (mode === "full") {
+          // Full: recurse into everything
+          dfs(task.children);
+        } else if (mode === "focus") {
+          // Focus: recurse into first incomplete, show rest but don't recurse
+          const firstIncomplete = children.tasks.find(
+            t => !t.deleted && !t.completed
+          );
+          if (firstIncomplete && task.index === firstIncomplete.index) {
+            dfs(task.children);
+          }
+          // Others: show but don't recurse
+        } else if (mode === "path" && targetIndex) {
+          // Path: show all at this level, recurse only into path to target
+          if (targetIndex.startsWith(task.index + ".")) {
+            dfs(task.children);
+          }
+          // Other branches: show but don't recurse
+        }
       }
     }
 
@@ -771,10 +777,11 @@ export function createTaskManager(): ITaskManager {
       return doList("full");
     },
 
-    // WHAT: List tasks with optional filtering
+    // WHAT: List tasks with mode-based filtering
     // WHY: Main view for understanding current state
     list(params: task_list): { tree: Task[]; rootProgress: Progress } {
-      return doList(params.mode ?? "focus");
+      const { mode, target } = params;
+      return doList(mode ?? "focus", target);
     },
 
     // WHAT: Add tasks to root level of active plan
