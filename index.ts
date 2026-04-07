@@ -46,13 +46,13 @@ const TaskGetParams = Type.Object({
 });
 
 const TaskUpdateParams = Type.Object({
-  index: Type.String({ description: "Task index or title to update" }),
-  title: Type.Optional(Type.String({ description: "New title - omit to leave unchanged" })),
-  description: Type.Optional(Type.String({ description: "New description - empty string clears" })),
+  indexOrTitle: Type.String({ description: "Task index or title to update" }),
+  newTitle: Type.Optional(Type.String({ description: "New title - omit to leave unchanged" })),
+  newDescription: Type.Optional(Type.String({ description: "New description - empty string clears" })),
 });
 
 const TaskCloseParams = Type.Object({
-  index: Type.String({ description: "Task index or title to close" }),
+  indexOrTitle: Type.String({ description: "Task index or title to close" }),
   mode: StringEnum(["complete", "delete"] as const, { description: "complete: marks task done (fails if has incomplete children). delete: soft-deletes task and removes children." }),
 });
 
@@ -398,13 +398,13 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const p = params as { index?: unknown; title?: unknown; description?: unknown };
-        const index = normalizeIndexOrTitle(p.index);
+        const p = params as { indexOrTitle?: unknown; newTitle?: unknown; newDescription?: unknown };
+        const index = normalizeIndexOrTitle(p.indexOrTitle);
         // Empty string clears description, undefined leaves unchanged
-        const description = typeof p.description === 'string'
-          ? (p.description === '' ? undefined : p.description)
+        const description = typeof p.newDescription === 'string'
+          ? (p.newDescription === '' ? undefined : p.newDescription)
           : undefined;
-        const result = getManager().update({ index, title: p.title as string | undefined, description });
+        const result = getManager().update({ index, title: p.newTitle as string | undefined, description });
         return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }] };
       } catch (error) {
         return handleError(error);
@@ -428,8 +428,8 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const p = params as { index?: unknown; mode?: unknown };
-        const index = normalizeIndexOrTitle(p.index);
+        const p = params as { indexOrTitle?: unknown; mode?: unknown };
+        const index = normalizeIndexOrTitle(p.indexOrTitle);
         const mode = p.mode as "complete" | "delete";
 
         if (mode !== "complete" && mode !== "delete") {
