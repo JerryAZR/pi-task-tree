@@ -419,7 +419,7 @@ export default function (pi: ExtensionAPI) {
     description: "Close a task by completing or deleting it. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
-      "Mark tasks complete as soon as you finish working on them (not at the end)",
+      "Mark tasks complete as soon as you finish working on them",
       "Use 'complete' to mark a finished task done",
       "Use 'delete' to remove a task and all its children",
       "Cannot complete a task that has incomplete children",
