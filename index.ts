@@ -54,8 +54,7 @@ const TaskCloseParams = Type.Object({
 });
 
 const TaskListParams = Type.Object({
-  mode: Type.Optional(StringEnum(["focus", "path", "full"] as const, { description: "focus (default): shows working path. path: shows path to target. full: shows all." })),
-  target: Type.Optional(Type.String({ description: "For path mode: show path to this task index" })),
+  mode: Type.Optional(StringEnum(["focus", "full"] as const, { description: "focus (default): shows working path. full: shows all." })),
 });
 
 // ============================================================================
@@ -404,23 +403,21 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_list",
     label: "Task List",
-    description: "Show tasks in focus (default), path, or full mode. Focus: working path. Path: path to target task. Full: all tasks.",
+    description: "Show tasks in focus (default) or full mode. Focus shows working path, full shows all.",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
       "Use this tool to understand the progress made in this project",
       "Focus (default): Shows working path (first incomplete at each level)",
-      "Path: Shows path to a specific task (requires target parameter)",
       "Full: Shows all tasks"
     ],
     parameters: TaskListParams,
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const p = params as { mode?: string; target?: string } | null;
+        const p = params as { mode?: string } | null;
         const m = getManager();
         const result = m.list({
-          mode: p?.mode as "focus" | "path" | "full" | undefined,
-          target: p?.target
+          mode: p?.mode as "focus" | "full" | undefined
         });
         return { content: [{ type: "text", text: formatListResult(result) }] };
       } catch (error) {
