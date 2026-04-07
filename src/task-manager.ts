@@ -622,32 +622,24 @@ export function createTaskManager(): ITaskManager {
         throw ERRORS.ROOT_NOT_FOUND(id);
       }
 
-      if (activeId === id) {
-        // WHAT: If deleting active root, switch to another or clear state
-        deleteTasksFile(id);
-        manifest.roots.splice(index, 1);
-        manifest.activeId = manifest.roots.length > 0 ? manifest.roots[0].id : null;
-        persistManifest();
+      // WHAT: Delete file and remove from registry
+      deleteTasksFile(id);
+      manifest.roots.splice(index, 1);
 
-        if (manifest.activeId) {
-          loadRoot(manifest.activeId);
-        } else {
-          // Clear to empty state
-          activeId = null;
-          rootList = emptyTaskList();
-          tasks = new Map();
-          const root = createSyntheticRootTask(rootList);
-          tasks.set(ROOT_INDEX, root);
-          store.rootList = rootList;
-          store.indexMap = tasks;
-        }
-      } else {
-        // Just remove from registry
-        deleteTasksFile(id);
-        manifest.roots.splice(index, 1);
-        persistManifest();
+      if (activeId === id) {
+        // WHAT: If deleting active root, clear state - requires explicit root creation/activation
+        // WHY: Simpler than auto-switching; next operation will fail with NO_ACTIVE_ROOT
+        activeId = null;
+        manifest.activeId = null;
+        rootList = emptyTaskList();
+        tasks = new Map();
+        const root = createSyntheticRootTask(rootList);
+        tasks.set(ROOT_INDEX, root);
+        store.rootList = rootList;
+        store.indexMap = tasks;
       }
 
+      persistManifest();
       return { roots: manifest.roots, activeId: manifest.activeId };
     },
 
