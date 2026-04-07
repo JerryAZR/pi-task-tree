@@ -1,14 +1,14 @@
 // ============================================================================
 // TaskManager - Core implementation for nested-todo
 // ============================================================================
-// 
+//
 // MODEL OVERVIEW:
 // - Tasks have two boolean flags: completed, deleted
 // - [⏳] is a DERIVED display state (not stored): pending + has completed children
 // - Siblings can be completed in any order
 // - Parents require explicit close when all children are done/deleted
 // - Deleted tasks are soft-deleted (remain in tree, excluded from counts)
-// 
+//
 // WHY THIS MODEL:
 // - Agents naturally follow order, so strict sequential enforcement isn't needed
 // - [⏳] helps agents understand progress without complex state machine
@@ -66,7 +66,6 @@ const PERSISTENCE_VERSION = 1;
 // WHY: JSONL is simple to append/read, children are reconstructed from index pattern
 interface PersistedMeta {
   version: number;
-  lastCompletedIndex: string | null;  // For focus mode reference
 }
 
 interface PersistedTask {
@@ -140,11 +139,10 @@ function parseDump(content: string): { meta: PersistedMeta; tasks: Map<string, P
 
 // WHAT: Serialize state to JSONL
 // WHY: DFS traversal flattens tree into sequential lines
-function dumpState(lastCompletedIndex: string | null, tasks: Map<string, Task>): string {
+function dumpState(tasks: Map<string, Task>): string {
   const lines: string[] = [];
   lines.push(JSON.stringify({
     version: PERSISTENCE_VERSION,
-    lastCompletedIndex,
   }));
 
   const rootList = getRootList(tasks);
@@ -233,10 +231,10 @@ function buildTreeFromTasks(persistedTasks: Map<string, PersistedTask>): { tasks
 
 // WHAT: Load state from JSONL string (for testing)
 // WHY: Enables tests to inject state without file I/O
-export function loadFromDump(content: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } {
-  const { meta, tasks: persistedTasks } = parseDump(content);
+export function loadFromDump(content: string): { tasks: Map<string, Task>; rootList: TaskList } {
+  const { tasks: persistedTasks } = parseDump(content);
   const { tasks: taskMap, rootList } = buildTreeFromTasks(persistedTasks);
-  return { lastCompletedIndex: meta.lastCompletedIndex, tasks: taskMap, rootList };
+  return { tasks: taskMap, rootList };
 }
 
 // ============================================================================
@@ -327,10 +325,9 @@ export function createTaskManager(): ITaskManager {
   // Load or initialize roots manifest
   let manifest = isTest ? { roots: [], activeId: null } : loadRootsManifest();
   let activeId: string | null = manifest.activeId;
-  
+
   // Load active root's tasks (if any)
   let loaded = activeId && !isTest ? loadTasksFromFile(activeId) : null;
-  let lastCompletedIndex: string | null = loaded?.lastCompletedIndex ?? null;
 
   let tasks: Map<string, Task>;
   let rootList: TaskList;
@@ -351,7 +348,6 @@ export function createTaskManager(): ITaskManager {
   const store: TaskStore = {
     rootList,
     indexMap: tasks,
-    lastCompletedIndex,
     getTask(index: string): Task | undefined {
       return tasks.get(index);
     },
@@ -361,7 +357,7 @@ export function createTaskManager(): ITaskManager {
   // WHY: Tests run in memory for speed and isolation
   function persistTasks(): void {
     if (isTest || !activeId) return;
-    saveTasksToFile(activeId, lastCompletedIndex, tasks);
+    saveTasksToFile(activeId, tasks);
   }
 
   function persistManifest(): void {
@@ -376,7 +372,6 @@ export function createTaskManager(): ITaskManager {
   function loadRoot(id: string): void {
     const loadedData = loadTasksFromFile(id);
     if (loadedData) {
-      lastCompletedIndex = loadedData.lastCompletedIndex;
       tasks = loadedData.tasks;
       rootList = loadedData.rootList;
       // Recreate synthetic root with loaded children
@@ -384,17 +379,14 @@ export function createTaskManager(): ITaskManager {
       tasks.set(ROOT_INDEX, root);
       store.rootList = rootList;
       store.indexMap = tasks;
-      store.lastCompletedIndex = lastCompletedIndex;
     } else {
       // New empty root
-      lastCompletedIndex = null;
       rootList = emptyTaskList();
       tasks = new Map();
       const root = createSyntheticRootTask(rootList);
       tasks.set(ROOT_INDEX, root);
       store.rootList = rootList;
       store.indexMap = tasks;
-      store.lastCompletedIndex = null;
     }
     activeId = id;
   }
@@ -402,7 +394,7 @@ export function createTaskManager(): ITaskManager {
   function switchToRoot(id: string): void {
     // Save current root before switching
     if (activeId) {
-      saveTasksToFile(activeId, lastCompletedIndex, tasks);
+      saveTasksToFile(activeId, tasks);
     }
     loadRoot(id);
     manifest.activeId = id;
@@ -458,7 +450,7 @@ export function createTaskManager(): ITaskManager {
 
       const task: Task = {
         index,
-        parentIndex: scopePrefix === "" ? ROOT_INDEX : scopePrefix.slice(0, -1),
+        parentIndex: parentIndex,
         title: item.title,
         description: item.description,
         completed: false,
@@ -508,18 +500,34 @@ export function createTaskManager(): ITaskManager {
 
     const tree: Task[] = [];
 
-    // WHAT: DFS traversal of tree
-    // WHY: Preserves hierarchy while flattening for display
+    // WHAT: DFS traversal with smart expansion
+    // WHY: Focus shows the "working path" by recursing into first incomplete task
     function dfs(children: TaskList | undefined) {
       if (!children) return;
+
+      // Find first incomplete task for focus mode
+      let firstIncompleteFound = false;
+
       for (const task of children.tasks) {
-        // WHAT: Skip deleted tasks in focus mode
-        // WHY: Focus should show only actionable items
-        if (mode === "focus" && task.deleted) continue;
+        // Skip deleted tasks
+        if (task.deleted) continue;
+
         tree.push(task);
-        if (task.children) {
-          dfs(task.children);
+
+        // WHAT: In focus mode, only recurse into first incomplete task
+        // WHY: Shows the path from root to current working task
+        if (mode === "focus" && !firstIncompleteFound && !task.completed) {
+          firstIncompleteFound = true;
+          if (task.children && task.children.tasks.length > 0) {
+            dfs(task.children);
+          }
+        } else if (mode === "full") {
+          // Full mode: recurse into all tasks
+          if (task.children && task.children.tasks.length > 0) {
+            dfs(task.children);
+          }
         }
+        // Other incomplete tasks in focus mode: show but don't recurse
       }
     }
 
@@ -624,7 +632,6 @@ export function createTaskManager(): ITaskManager {
           tasks.set(ROOT_INDEX, root);
           store.rootList = rootList;
           store.indexMap = tasks;
-          store.lastCompletedIndex = null;
         }
       } else {
         // Just remove from registry
@@ -730,8 +737,6 @@ export function createTaskManager(): ITaskManager {
       }
 
       task.completed = true;
-      lastCompletedIndex = task.index;
-      store.lastCompletedIndex = lastCompletedIndex;
 
       persistTasks();
       return doList("full");
@@ -752,7 +757,7 @@ export function createTaskManager(): ITaskManager {
       }
 
       task.deleted = true;
-      
+
       // WHAT: Remove children recursively
       // WHY: Deleted tasks shouldn't have visible children
       if (task.children) {
@@ -761,9 +766,6 @@ export function createTaskManager(): ITaskManager {
         }
         task.children = { tasks: [] };
       }
-      
-      lastCompletedIndex = task.index;
-      store.lastCompletedIndex = lastCompletedIndex;
 
       persistTasks();
       return doList("full");
@@ -793,7 +795,7 @@ export function createTaskManager(): ITaskManager {
 // ============================================================================
 // WHY: These don't need closure state, defined at module level
 
-function loadTasksFromFile(id: string): { lastCompletedIndex: string | null; tasks: Map<string, Task>; rootList: TaskList } | null {
+function loadTasksFromFile(id: string): { tasks: Map<string, Task>; rootList: TaskList } | null {
   const path = getListPath(id);
   if (!existsSync(path)) {
     return null;
@@ -807,10 +809,10 @@ function loadTasksFromFile(id: string): { lastCompletedIndex: string | null; tas
   }
 }
 
-function saveTasksToFile(id: string, lastCompletedIndex: string | null, tasks: Map<string, Task>): void {
+function saveTasksToFile(id: string, tasks: Map<string, Task>): void {
   ensurePersistenceDir();
   const path = getListPath(id);
-  writeFileSync(path, dumpState(lastCompletedIndex, tasks), "utf-8");
+  writeFileSync(path, dumpState(tasks), "utf-8");
 }
 
 function deleteTasksFile(id: string): void {

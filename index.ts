@@ -405,12 +405,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_list",
     label: "Task List",
-    description: "Show incomplete tasks or all tasks",
+    description: "Show tasks with focus (default) or full mode. Focus shows the working path (expands first incomplete at each level). Full shows all tasks.",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
       "Use this tool to understand the progress made in this project",
-      "Use 'focus' mode (default) to view incomplete tasks",
-      "Use 'full' mode to view all tasks including completed"
+      "Focus mode (default): Shows path from root to current working task",
+      "Full mode: Shows all tasks including completed and deleted"
     ],
     parameters: TaskListParams,
 

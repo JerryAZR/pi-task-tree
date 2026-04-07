@@ -36,10 +36,10 @@ beforeEach(() => {
 describe("Load and Dump", () => {
   test("empty dump roundtrips", () => {
     const state = loadFromDump(
-      JSON.stringify({ version: 1, lastCompletedIndex: null }) + "\n"
+      JSON.stringify({ version: 1 }) + "\n"
     );
     expect(state.tasks.size).toBe(0);
-    expect(state.lastCompletedIndex).toBeNull();
+    expect(state.rootList.tasks.length).toBe(0);
   });
 
   test("simple dump roundtrips", () => {

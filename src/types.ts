@@ -32,7 +32,6 @@ export interface TaskList {
 export interface TaskStore {
   indexMap: Map<string, Task>;
   rootList: TaskList;
-  lastCompletedIndex: string | null;
   getTask(index: string): Task | undefined;
 }
 
@@ -130,6 +129,9 @@ export interface task_delete_result {
   rootProgress: Progress;
 }
 
+// list modes:
+// - focus: DFS, recurses only into first incomplete task at each level (default)
+// - full: DFS, includes all tasks
 export interface task_list {
   mode?: "focus" | "full";
 }
