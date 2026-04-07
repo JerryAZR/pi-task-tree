@@ -3,7 +3,6 @@
  */
 
 import { createTaskManager, loadFromDump } from "../src/task-manager";
-import { TaskTreeError, ERRORS } from "../src/errors";
 import { unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -51,10 +50,6 @@ describe("Load and Dump", () => {
     });
 
     const { indexMap } = manager.getState();
-    const serialized = Array.from(indexMap.entries())
-      .map(([k, v]) => JSON.stringify({ k, v }))
-      .join("\n");
-
     expect(indexMap.get("1")?.title).toBe("Task 1");
     expect(indexMap.get("2")?.title).toBe("Task 2");
   });
@@ -87,7 +82,7 @@ describe("Root Management", () => {
 
     const roots = manager.listRoots();
     expect(roots.roots.length).toBe(2);
-    expect(roots.activeId).toBe(roots.roots[1].id); // Last created is active
+    expect(roots.activeId).toBe(roots.roots[1].id);
   });
 
   test("activateRoot updates activeId", () => {
@@ -101,7 +96,6 @@ describe("Root Management", () => {
       items: [{ title: "Task 2" }],
     });
 
-    // Activate first root
     manager.activateRoot({ id: root1.root.id });
 
     const roots = manager.listRoots();
@@ -159,7 +153,6 @@ describe("Breakdown Tasks", () => {
     });
 
     const state = manager.getState();
-    expect(state.indexMap.has("1.1")).toBe(true);
     expect(state.indexMap.get("1.1")?.title).toBe("New 1");
     expect(state.indexMap.has("1.2")).toBe(true);
   });
@@ -200,7 +193,7 @@ describe("Nested Tree Structure", () => {
   });
 });
 
-describe("Task Completion", () => {
+describe("Task Close", () => {
   test("complete marks task done", () => {
     const manager = createTaskManager();
     manager.createRoot({
@@ -208,8 +201,7 @@ describe("Task Completion", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.complete({ index: "1" });
-
+    manager.close({ index: "1", mode: "complete" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -220,7 +212,26 @@ describe("Task Completion", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.complete({ index: "1" });
-    expect(() => manager.complete({ index: "1" })).toThrow("already completed");
+    manager.close({ index: "1", mode: "complete" });
+    expect(() => manager.close({ index: "1", mode: "complete" })).toThrow("already completed");
+  });
+
+  test("delete removes children", () => {
+    const manager = createTaskManager();
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Parent" }],
+    });
+
+    manager.breakdown({
+      items: [{ title: "Child" }],
+      parent: "1",
+    });
+
+    manager.close({ index: "1", mode: "delete" });
+
+    const state = manager.getState();
+    expect(state.indexMap.get("1")?.deleted).toBe(true);
+    expect(state.indexMap.has("1.1")).toBe(false);
   });
 });

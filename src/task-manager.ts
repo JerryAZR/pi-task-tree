@@ -1,10 +1,11 @@
 // TaskManager - Core implementation for nested-todo
-// Simplified model: only completed/not-completed states, no sequential blocking
+// Model: completed/deleted flags, parent completion rules, [⏳] derived display
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import type {
   Task,
+  DisplayState,
   Progress,
   TaskManager as ITaskManager,
   TaskStore,
@@ -20,15 +21,15 @@ import type {
   task_get_result,
   task_update,
   task_update_result,
-  task_complete,
-  task_complete_result,
+  task_close,
+  task_close_result,
   task_list,
   task_list_result,
 } from "./types";
 import { ROOT_INDEX } from "./types";
 import { ERRORS } from "./errors";
+import { TaskTreeError } from "./errors";
 
-// Persistence directories (relative to cwd)
 const PERSISTENCE_DIR = ".pi/task_tree";
 const LISTS_DIR = "lists";
 const ROOTS_FILE = "roots.jsonl";
@@ -44,6 +45,7 @@ interface PersistedTask {
   title: string;
   description?: string;
   completed: boolean;
+  deleted: boolean;
 }
 
 const PERSISTENCE_VERSION = 1;
@@ -119,6 +121,7 @@ function dumpState(lastCompletedIndex: string | null, tasks: Map<string, Task>):
           title: task.title,
           description: task.description,
           completed: task.completed,
+          deleted: task.deleted,
         }));
         if (task.children) {
           dfsChildren(task.children);
@@ -184,6 +187,7 @@ function buildTreeFromTasks(persistedTasks: Map<string, PersistedTask>): { tasks
         title: pTask.title,
         description: pTask.description,
         completed: pTask.completed,
+        deleted: pTask.deleted,
       };
 
       taskMap.set(task.index, task);
@@ -242,8 +246,46 @@ function createSyntheticRootTask(rootList: TaskList): Task {
     title: "Root",
     description: "Synthetic root task - parent of all root-level tasks. Do not modify.",
     completed: false,
+    deleted: false,
     children: rootList,
   };
+}
+
+// ============================================================================
+// Display state helpers
+// ============================================================================
+
+function getDisplayState(task: Task): DisplayState {
+  if (task.deleted) return "deleted";
+  if (task.completed) return "completed";
+  
+  // Check if has completed children (derived in_progress)
+  if (task.children && task.children.tasks.length > 0) {
+    const hasCompletedChild = task.children.tasks.some(
+      child => child.completed && !child.deleted
+    );
+    if (hasCompletedChild) return "in_progress";
+  }
+  
+  return "pending";
+}
+
+function hasPendingChildren(task: Task): boolean {
+  if (!task.children || task.children.tasks.length === 0) {
+    return false;
+  }
+  return task.children.tasks.some(
+    child => !child.completed && !child.deleted
+  );
+}
+
+function deleteTaskAndDescendants(task: Task, tasks: Map<string, Task>): void {
+  if (task.children) {
+    for (const child of task.children.tasks) {
+      deleteTaskAndDescendants(child, tasks);
+    }
+  }
+  tasks.delete(task.index);
 }
 
 // ============================================================================
@@ -329,33 +371,21 @@ export function createTaskManager(): ITaskManager {
     const parentTask = tasks.get(parentIndex);
 
     if (!parentTask) {
-      throw new Error(
-        `INTERNAL ERROR: Parent task "${parentIndex}" not found in task map.`
-      );
+      throw new Error(`INTERNAL ERROR: Parent task "${parentIndex}" not found in task map.`);
     }
 
-    if (parentTask.completed) {
+    if (parentTask.completed || parentTask.deleted) {
       throw ERRORS.TASK_COMPLETED(parentIndex);
     }
 
     const existingChildren = parentTask.children;
     const hasChildren = existingChildren && existingChildren.tasks.length > 0;
 
-    // Handle mode
     if (mode === "new" && hasChildren) {
       throw ERRORS.LIST_EXISTS(parentIndex);
     } else if (mode === "override" && existingChildren) {
       for (const oldTask of existingChildren.tasks) {
-        // Recursively delete all descendants
-        function deleteDescendants(task: Task) {
-          if (task.children) {
-            for (const child of task.children.tasks) {
-              deleteDescendants(child);
-            }
-          }
-          tasks.delete(task.index);
-        }
-        deleteDescendants(oldTask);
+        deleteTaskAndDescendants(oldTask, tasks);
       }
     }
 
@@ -363,7 +393,6 @@ export function createTaskManager(): ITaskManager {
     const existingCount = existingChildren?.tasks.length ?? 0;
     const startIndex = mode === "append" ? existingCount + 1 : 1;
 
-    // Create new tasks
     const taskObjects: Task[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -375,12 +404,12 @@ export function createTaskManager(): ITaskManager {
         title: item.title,
         description: item.description,
         completed: false,
+        deleted: false,
       };
       tasks.set(task.index, task);
       taskObjects.push(task);
     }
 
-    // Update parent's children
     const allChildren = mode === "append" && existingChildren
       ? [...existingChildren.tasks, ...taskObjects]
       : taskObjects;
@@ -400,12 +429,15 @@ export function createTaskManager(): ITaskManager {
   function doList(listMode: string): { tree: Task[]; rootProgress: Progress } {
     const mode = listMode || "focus";
     const rootListLocal = store.rootList;
+
+    // Count non-deleted tasks
+    const activeTasks = rootListLocal.tasks.filter(t => !t.deleted);
     const rootProgress = {
-      completed: rootListLocal.tasks.filter(t => t.completed).length,
-      total: rootListLocal.tasks.length,
+      completed: activeTasks.filter(t => t.completed).length,
+      total: activeTasks.length,
     };
 
-    if (rootListLocal.tasks.length === 0) {
+    if (activeTasks.length === 0) {
       return { tree: [], rootProgress };
     }
 
@@ -414,10 +446,9 @@ export function createTaskManager(): ITaskManager {
     function dfs(children: TaskList | undefined, includeAll: boolean) {
       if (!children) return;
       for (const task of children.tasks) {
-        // In focus mode, only include incomplete tasks
-        if (mode === "full" || !task.completed) {
-          tree.push(task);
-        }
+        // Skip deleted tasks in focus mode
+        if (mode === "focus" && task.deleted) continue;
+        tree.push(task);
         if (task.children) {
           dfs(task.children, includeAll);
         }
@@ -528,7 +559,7 @@ export function createTaskManager(): ITaskManager {
       if (task.index === ROOT_INDEX) {
         return {
           task,
-          children: store.rootList.tasks,
+          children: store.rootList.tasks.filter(t => !t.deleted),
         };
       }
 
@@ -540,7 +571,7 @@ export function createTaskManager(): ITaskManager {
       return {
         task,
         parent,
-        children: task.children?.tasks ?? [],
+        children: task.children?.tasks.filter(t => !t.deleted) ?? [],
       };
     },
 
@@ -557,7 +588,7 @@ export function createTaskManager(): ITaskManager {
         throw ERRORS.ROOT_TASK();
       }
 
-      if (task.completed) {
+      if (task.completed || task.deleted) {
         throw ERRORS.TASK_COMPLETED(task.index);
       }
 
@@ -574,8 +605,8 @@ export function createTaskManager(): ITaskManager {
       return { task };
     },
 
-    complete(params: task_complete): { tree: Task[]; rootProgress: Progress } {
-      const { index } = params;
+    close(params: task_close): { tree: Task[]; rootProgress: Progress } {
+      const { index, mode } = params;
 
       let task: Task | undefined = tasks.get(index);
 
@@ -583,16 +614,43 @@ export function createTaskManager(): ITaskManager {
         task = findTaskByTitle(tasks, index);
       }
 
-      if (task.completed) {
-        throw ERRORS.ALREADY_COMPLETED(task.index);
+      if (mode === "complete") {
+        if (task.completed) {
+          throw ERRORS.ALREADY_COMPLETED(task.index);
+        }
+        if (task.deleted) {
+          throw new TaskTreeError("TASK_DELETED", `Task "${task.index}" is deleted`);
+        }
+        // Check if has pending children
+        if (hasPendingChildren(task)) {
+          const pendingChildren = task.children!.tasks
+            .filter(t => !t.completed && !t.deleted)
+            .map(t => t.index);
+          throw new TaskTreeError(
+            "HAS_PENDING_CHILDREN",
+            `Cannot complete task "${task.index}" - has incomplete children: ${pendingChildren.join(", ")}. Complete or delete children first.`
+          );
+        }
+        task.completed = true;
+        lastCompletedIndex = task.index;
+        store.lastCompletedIndex = lastCompletedIndex;
+      } else if (mode === "delete") {
+        if (task.deleted) {
+          throw new TaskTreeError("ALREADY_DELETED", `Task "${task.index}" is already deleted`);
+        }
+        task.deleted = true;
+        // Remove children recursively
+        if (task.children) {
+          for (const child of task.children.tasks) {
+            deleteTaskAndDescendants(child, tasks);
+          }
+          task.children = { tasks: [] };
+        }
+        lastCompletedIndex = task.index;
+        store.lastCompletedIndex = lastCompletedIndex;
       }
 
-      task.completed = true;
-      lastCompletedIndex = task.index;
-      store.lastCompletedIndex = lastCompletedIndex;
-
       persistTasks();
-
       return doList("full");
     },
 
@@ -601,3 +659,5 @@ export function createTaskManager(): ITaskManager {
     },
   };
 }
+
+

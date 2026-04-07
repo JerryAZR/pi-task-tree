@@ -1,6 +1,6 @@
 /**
  * Task Tree Extension - Nested task list with completed tracking
- * Simplified model: only completed/not-completed, no sequential blocking
+ * Model: completed/deleted flags, parent completion rules, [⏳] derived display
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -8,7 +8,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 
 import { createTaskManager, type TaskManager } from "./src/task-manager";
-import type { Task } from "./src/types";
+import type { Task, DisplayState } from "./src/types";
 import { TaskTreeError } from "./src/errors";
 
 // TypeBox schemas for LLM parameters
@@ -41,8 +41,9 @@ const TaskUpdateParams = Type.Object({
   description: Type.Optional(Type.Union([Type.String(), Type.Null()] as const, { description: "New description - omit to leave unchanged, null to clear" })),
 });
 
-const TaskCompleteParams = Type.Object({
-  index: Type.String({ description: "Task index or title to complete" }),
+const TaskCloseParams = Type.Object({
+  index: Type.String({ description: "Task index or title to close" }),
+  mode: StringEnum(["complete", "delete"] as const, { description: "complete: marks task done (fails if has incomplete children). delete: soft-deletes task and removes children." }),
 });
 
 const TaskListParams = Type.Object({
@@ -50,19 +51,46 @@ const TaskListParams = Type.Object({
 });
 
 // ============================================================================
+// Display state helpers
+// ============================================================================
+
+function getDisplayState(task: Task): DisplayState {
+  if (task.deleted) return "deleted";
+  if (task.completed) return "completed";
+  
+  // Check if has completed children (derived in_progress)
+  if (task.children && task.children.tasks.length > 0) {
+    const hasCompletedChild = task.children.tasks.some(
+      child => child.completed && !child.deleted
+    );
+    if (hasCompletedChild) return "in_progress";
+  }
+  
+  return "pending";
+}
+
+const DISPLAY_ICONS: Record<DisplayState, string> = {
+  pending: "[  ]",
+  in_progress: "[⏳]",
+  completed: "[✅]",
+  deleted: "[🗑️]",
+};
+
+// ============================================================================
 // Response formatting
 // ============================================================================
 
 function formatTaskBrief(task: Task): string {
-  const statusIcon = task.completed ? "[x]" : "[ ]";
-  return `${task.index} ${statusIcon} ${task.title}`;
+  const state = getDisplayState(task);
+  return `${task.index} ${DISPLAY_ICONS[state]} ${task.title}`;
 }
 
 function formatTaskDetail(task: Task, indent = ""): string {
   const lines: string[] = [];
+  const state = getDisplayState(task);
   lines.push(`${indent}index:    ${task.index}`);
   lines.push(`${indent}title:    ${task.title}`);
-  lines.push(`${indent}status:   ${task.completed ? "completed" : "pending"}`);
+  lines.push(`${indent}status:   ${state}`);
   if (task.description) {
     lines.push(`${indent}desc:     ${task.description}`);
   }
@@ -84,7 +112,9 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
     lines.push(`${indent}${formatTaskBrief(t)}`);
 
     if (t.children && t.children.tasks.length > 0) {
-      for (const child of t.children.tasks) {
+      // Filter out deleted children for display
+      const activeChildren = t.children.tasks.filter(child => !child.deleted);
+      for (const child of activeChildren) {
         formatTask(child, depth + 1);
       }
     }
@@ -292,23 +322,34 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_complete
+  // task_close
   pi.registerTool({
-    name: "task_complete",
-    label: "Task Complete",
-    description: "Mark a task as completed",
-    promptSnippet: "Mark the completion of a planned task",
+    name: "task_close",
+    label: "Task Close",
+    description: "Close a task by completing or deleting it",
+    promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
-      "Use this tool to mark a finished task as 'completed' in the task list"
+      "Use 'complete' to mark a finished task done",
+      "Use 'delete' to remove a task and all its children",
+      "Cannot complete a task that has incomplete children"
     ],
-    parameters: TaskCompleteParams,
+    parameters: TaskCloseParams,
 
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
-        const index = normalizeIndexOrTitle((params as { index?: unknown }).index);
-        const result = getManager().complete({ index });
-        const text = `Completed ${index}\n\n${formatListResult(result)}`;
-        return { content: [{ type: "text", text }] };
+        const p = params as { index?: unknown; mode?: unknown };
+        const index = normalizeIndexOrTitle(p.index);
+        const mode = p.mode as "complete" | "delete";
+        
+        if (mode !== "complete" && mode !== "delete") {
+          throw new TaskTreeError("INVALID_INPUT", "mode must be 'complete' or 'delete'");
+        }
+        
+        const result = getManager().close({ index, mode });
+        const text = mode === "complete" 
+          ? `Completed ${index}`
+          : `Deleted ${index}`;
+        return { content: [{ type: "text", text: `${text}\n\n${formatListResult(result)}` }] };
       } catch (error) {
         return handleError(error);
       }

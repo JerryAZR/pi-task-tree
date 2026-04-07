@@ -15,7 +15,7 @@ export const ERRORS = {
     new TaskTreeError("LIST_EXISTS", `Children already exist under parent ${parent ?? "root"}. Use mode "append" or "override"`),
   
   TASK_COMPLETED: (index: string) =>
-    new TaskTreeError("TASK_COMPLETED", `Cannot modify completed task "${index}"`),
+    new TaskTreeError("TASK_COMPLETED", `Cannot modify task "${index}" - it is completed or deleted`),
   
   NOT_FOUND: (query: string) =>
     new TaskTreeError("NOT_FOUND", `No task found matching "${query}"`),

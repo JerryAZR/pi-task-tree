@@ -1,7 +1,7 @@
 // Core types for nested-todo
-// Simplified model: only completed/not-completed states
+// Model: completed/deleted flags, parent completion rules, [⏳] derived display
 
-export const ROOT_INDEX = "root";  // Synthetic root, parent of all root-level tasks (same for all roots)
+export const ROOT_INDEX = "root";  // Synthetic root, parent of all root-level tasks
 
 export interface Progress {
   completed: number;
@@ -9,15 +9,19 @@ export interface Progress {
 }
 
 // Task - core entity
-// Hierarchy: Task owns children, references parent. Root task has index "root".
+// [⏳] is derived display: pending + hasCompletedChildren
 export interface Task {
   index: string;            // Unique identifier
-  parentIndex: string;      // Parent task index (always defined)
+  parentIndex: string;      // Parent task index
   title: string;
   description?: string;
-  completed: boolean;        // Simple completed flag
-  children?: TaskList;      // Children under this task
+  completed: boolean;        // Terminal state
+  deleted: boolean;          // Soft-deleted terminal state
+  children?: TaskList;       // Children under this task
 }
+
+// Display state (derived, not stored)
+export type DisplayState = "pending" | "in_progress" | "completed" | "deleted";
 
 // TaskList - all children under a parent
 export interface TaskList {
@@ -26,23 +30,23 @@ export interface TaskList {
 
 // Task storage interface
 export interface TaskStore {
-  indexMap: Map<string, Task>;  // All tasks including root
-  rootList: TaskList;  // Reference to root's children (empty if none)
-  lastCompletedIndex: string | null;  // Last completed for reference
-  getTask(index: string): Task | undefined;  // Convenience lookup
+  indexMap: Map<string, Task>;
+  rootList: TaskList;
+  lastCompletedIndex: string | null;
+  getTask(index: string): Task | undefined;
 }
 
 // Root list management types
 export interface Root {
-  id: string;           // Unique identifier (timestamp-based)
-  title: string;        // Display name
-  description?: string; // Optional description
-  createdAt: number;    // Unix timestamp
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: number;
 }
 
 export interface RootsManifest {
   roots: Root[];
-  activeId: string | null;  // ID of active root, null if none
+  activeId: string | null;
 }
 
 // API input/output types
@@ -54,7 +58,7 @@ export interface CreateListItem {
 export interface task_create_root {
   title: string;
   description?: string;
-  items: CreateListItem[];  // Required - initial tasks for the root list
+  items: CreateListItem[];
 }
 
 export interface task_create_root_result {
@@ -64,7 +68,7 @@ export interface task_create_root_result {
 
 export interface task_breakdown {
   items: CreateListItem[];
-  parent: string;  // Required - parent task index
+  parent: string;
   mode?: "new" | "append" | "override";
 }
 
@@ -88,7 +92,7 @@ export interface task_get {
 export interface task_get_result {
   task: Task;
   parent?: Task;
-  children: Task[];  // Direct children of the task
+  children: Task[];
 }
 
 export interface task_update {
@@ -101,11 +105,15 @@ export interface task_update_result {
   task: Task;
 }
 
-export interface task_complete {
+// task_close handles both complete and delete
+export type CloseMode = "complete" | "delete";
+
+export interface task_close {
   index: string;
+  mode: CloseMode;
 }
 
-export interface task_complete_result {
+export interface task_close_result {
   tree: Task[];
   rootProgress: Progress;
 }
@@ -123,7 +131,7 @@ export type CreateMode = "new" | "append" | "override";
 export type ListMode = "focus" | "full";
 
 export interface TaskManager {
-  // State access (for testing)
+  // State access
   getState(): TaskStore;
   isCompleted(index: string): boolean | undefined;
   
@@ -137,6 +145,6 @@ export interface TaskManager {
   // Task operations
   get(params: task_get): task_get_result;
   update(params: task_update): task_update_result;
-  complete(params: task_complete): task_complete_result;
+  close(params: task_close): task_close_result;
   list(params: task_list): task_list_result;
 }
