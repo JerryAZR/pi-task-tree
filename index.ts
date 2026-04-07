@@ -137,9 +137,9 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
   return lines.join("\n");
 }
 
-function formatGetResult(result: { task: Task; parent?: Task }): string {
+function formatGetResult(result: { task: Task; parent?: Task; root?: { title: string; description?: string } }): string {
   const lines: string[] = [];
-  const { task, parent } = result;
+  const { task, parent, root } = result;
   const state = getDisplayState(task);
 
   // 1. The task itself
@@ -186,13 +186,13 @@ function formatGetResult(result: { task: Task; parent?: Task }): string {
     }
   }
 
-  // 5. Root/Project context (only for non-root tasks, and only if has actual description)
-  if (task.index !== "root" && task.parentIndex === "root" && task.description) {
-    // Check if description is the synthetic root message
-    if (!task.description.startsWith("Synthetic")) {
-      lines.push("");
-      lines.push("## Project");
-      lines.push(task.description);
+  // 5. Root/Project context
+  if (root) {
+    lines.push("");
+    lines.push("## Project");
+    lines.push(`**${root.title}**`);
+    if (root.description) {
+      lines.push(root.description);
     }
   }
 

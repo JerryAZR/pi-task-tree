@@ -1,0 +1,4 @@
+{"version":1}
+{"index":"1","parentIndex":"root","title":"Feature A","description":"A feature","completed":false,"deleted":false}
+{"index":"1.1","parentIndex":"1","title":"A.1","description":"Sub task","completed":false,"deleted":false}
+{"index":"2","parentIndex":"root","title":"Feature B","completed":false,"deleted":false}

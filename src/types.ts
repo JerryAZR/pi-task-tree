@@ -98,6 +98,7 @@ export interface task_get {
 export interface task_get_result {
   task: Task;
   parent?: Task;
+  root?: { title: string; description?: string };
 }
 
 export interface task_update {
