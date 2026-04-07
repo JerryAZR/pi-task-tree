@@ -384,10 +384,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_update",
     label: "Task Update",
-    description: "Update task title or description",
+    description: "Update task title or description. Cannot update completed or deleted tasks.",
     promptSnippet: "Update title or description of a planned task",
     promptGuidelines: [
-      "Use this tool to update the description or title of a planned task"
+      "Use this tool to update the description or title of a pending task",
+      "Cannot update completed or deleted tasks",
+      "For evolving requirements, create new tasks instead of modifying completed ones"
     ],
     parameters: TaskUpdateParams,
 
@@ -411,12 +413,13 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_close",
     label: "Task Close",
-    description: "Close a task by completing or deleting it",
+    description: "Close a task by completing or deleting it. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
       "Use 'complete' to mark a finished task done",
       "Use 'delete' to remove a task and all its children",
-      "Cannot complete a task that has incomplete children"
+      "Cannot complete a task that has incomplete children",
+      "Completed tasks are locked - use task_extend_root or task_breakdown to add new tasks for changes"
     ],
     parameters: TaskCloseParams,
 
