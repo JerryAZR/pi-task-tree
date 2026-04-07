@@ -449,7 +449,6 @@ export function createTaskManager(): ITaskManager {
     // WHAT: Calculate task indices based on mode and parent scope
     // WHY: Index pattern: root tasks are 1,2,3; children of 1 are 1.1,1.2,1.3
     const scopePrefix = parentIndex === ROOT_INDEX ? "" : parentIndex + ".";
-    const existingCount = existingChildren?.tasks.length ?? 0;
     const existingList = existingChildren?.tasks ?? [];
 
     // WHAT: Determine insertion point for insert mode
@@ -475,7 +474,7 @@ export function createTaskManager(): ITaskManager {
 
     let allChildren: Task[];
     if (mode === "override") {
-      for (const oldTask of (existingChildren?.tasks ?? [])) {
+      for (const oldTask of existingList) {
         deleteTaskAndDescendants(oldTask, tasks);
       }
       allChildren = newTasks;
@@ -485,8 +484,8 @@ export function createTaskManager(): ITaskManager {
       allChildren = [...before, ...newTasks, ...after];
     } else {
       // append or new
-      allChildren = mode === "append" && existingChildren
-        ? [...existingChildren.tasks, ...newTasks]
+      allChildren = mode === "append" && existingList.length > 0
+        ? [...existingList, ...newTasks]
         : newTasks;
     }
 
