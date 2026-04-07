@@ -109,8 +109,7 @@ function formatTaskDetail(task: Task, indent = ""): string {
     lines.push(``);
     lines.push(`${indent}## SubTask List`);
     for (const child of task.children.tasks) {
-      const childState = getDisplayState(child);
-      lines.push(`${indent}- ${DISPLAY_ICONS[childState]} **${child.index}** ${child.title}`);
+      lines.push(`${indent}- ${formatTaskBrief(child)}`);
     }
   }
 
