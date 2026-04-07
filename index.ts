@@ -430,7 +430,9 @@ export default function (pi: ExtensionAPI) {
           throw new TaskTreeError("INVALID_INPUT", "mode must be 'complete' or 'delete'");
         }
 
-        const result = getManager().close({ index, mode });
+        const result = mode === "complete"
+          ? getManager().complete({ index })
+          : getManager().delete({ index });
         const text = mode === "complete"
           ? `Completed ${index}`
           : `Deleted ${index}`;

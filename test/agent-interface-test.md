@@ -2,85 +2,99 @@
 
 ## Context
 
-You are testing the task management tools (`task_*`) provided by the pi extension. These tools allow you to create multiple named task lists (roots), break down tasks hierarchically, track progress, and organize complex engineering workflows.
+You have access to task management tools via the pi extension. Use them to plan and track a development project.
 
-You have access to the following tools:
-- `task_create_root` — Create a new named task list with initial tasks
-- `task_breakdown` — Add subtasks under an existing parent task
-- `task_update` — Update task title or description
-- `task_complete` — Mark a task as completed
-- `task_list` — View tasks in focus or full mode
-- `task_get` — Get details of a planned task
-
-## Your Task
-
-Use the provided tools to complete the following operations. You may call any tool as many times as needed. Document your experience, including any confusion or failed attempts, in the self-evaluation section below.
+**Important:** There is no actual development involved. When asked to do work (implement, test, evaluate, etc.), simply mark the task as complete using the task tools. Your job is to use the task management tools to organize and track progress, not to actually write code.
 
 ---
 
 ## Scenario: Migrate User Authentication Service
 
-**Context:** The team needs to migrate the legacy authentication service to a new OAuth2-based system.
+Your team is migrating the legacy authentication service to a new OAuth2-based system.
 
 ---
 
 ### Step 1
 
-Start a new task list called "Auth Migration" by creating a root with initial phases: research, implementation, testing, and deployment.
+Create a task list for this migration project. Give it a descriptive name. Plan the main phases: research, implementation, testing, and deployment.
 
 ---
 
 ### Step 2
 
-Under the research phase (task "1"), add specific tasks for evaluating the current system, reviewing OAuth2 providers, and comparing token strategies.
+The research phase needs specific work items: evaluating the current system, reviewing OAuth2 providers, and comparing token strategies.
 
 ---
 
 ### Step 3
 
-After evaluating the current system (task "1.1"), you realize it shares a database with the billing service. Update that task's description to note this dependency.
+During research, you discover that the current authentication system shares a database with the billing service. Document this dependency.
 
 ---
 
 ### Step 4
 
-The deployment phase (task "4") needs to be split into staging and production rollout. Use override mode to replace it with two separate tasks.
+The original plan had a single "deployment" phase, but it should actually be split into staging rollout and production rollout.
 
 ---
 
 ### Step 5
 
-Once the OAuth2 provider evaluation (task "1.2") is complete, mark that task as done.
+Continue making progress until all research tasks are complete.
 
 ---
 
 ### Step 6
 
-Check the current status of all tasks to see what's ready, pending, or completed.
+Review the current state of the entire migration plan.
 
 ---
 
 ### Step 7
 
-Under the implementation phase (task "2"), add subtasks for updating the login flow, implementing token refresh logic, and adding logout handling.
+The implementation phase needs specific tasks: updating the login flow, implementing token refresh logic, and adding logout handling.
 
 ---
 
 ### Step 8
 
-The testing phase (task "3") needs to include integration tests and end-to-end tests. Add both as parallel tasks under the testing phase.
+Continue making progress until all implementation tasks are complete.
 
 ---
 
 ### Step 9
 
-The implementation plan (task "2") was too simplistic. Replace it entirely with a more detailed breakdown.
+The testing phase needs both integration tests and end-to-end tests.
 
 ---
 
 ### Step 10
 
-Clear the entire plan since the migration has been cancelled. (Delete the root or clear all tasks.)
+Continue making progress until all testing tasks are complete.
+
+---
+
+### Step 11
+
+The OAuth2 provider changed their API. The implementation needs to be updated accordingly, and re-tested.
+
+---
+
+### Step 12
+
+Continue making progress until implementation and testing are complete.
+
+---
+
+### Step 13
+
+The deployment phase needs more detail: setting up the staging environment, configuring production servers, and planning the rollout schedule.
+
+---
+
+### Step 14
+
+Review the current state and verify all prerequisites for deployment are met.
 
 ---
 
@@ -88,10 +102,9 @@ Clear the entire plan since the migration has been cancelled. (Delete the root o
 
 You should:
 - Create a coherent hierarchical task structure
-- Correctly nest subtasks under parents
-- Handle parallel tasks appropriately
-- Update task descriptions when context changes
-- Replace task lists when plans change
+- Correctly organize subtasks under parent tasks
+- Update task details when context changes
+- Modify task lists when plans evolve
 - Complete tasks in the right order
 - View and report progress accurately
 
@@ -101,44 +114,35 @@ You should:
 
 After completing the operations above, report your experience:
 
-### Tool Discovery and Understanding
+### Tool Discovery
 
-1. How did you discover what parameters each tool accepts?
-2. Were the parameter names intuitive or confusing? Explain.
-3. Did you encounter any unexpected constraints on parameter values?
+1. How did you discover what tools were available and what they do?
+2. Were the tool descriptions helpful? What was missing or confusing?
+3. How did you figure out which tool to use for each step?
 
-### Common Patterns
+### Navigation
 
-4. Describe how you figured out the correct patterns for:
-   - Creating a new task list (root)
-   - Adding top-level tasks vs. subtasks
-   - Creating parallel tasks that can run together
-   - Replacing/overwriting existing tasks
-   - Clearing/deleting tasks
+4. How did you find the task indices needed for subsequent operations?
+5. Were the response formats helpful for discovering structure?
 
-### Failures and Confusion
+### Errors and Edge Cases
 
-5. Document any failed tool calls, including:
-   - The exact call you attempted
-   - The error message received
-   - What you initially assumed the error meant
-   - How you figured out the correct usage
+6. Document any errors you encountered. For each error:
+   - What were you trying to do?
+   - What went wrong?
+   - Was this actually your mistake, or was the rejection reasonable?
+   - Was the error message helpful in understanding what went wrong?
 
-6. Were there any operations you couldn't figure out how to perform? Describe what you tried.
+7. Were there any operations you couldn't figure out how to perform, even after trying different approaches?
 
-### Interface Improvement Suggestions
+### Suggestions
 
-7. What would make this interface easier to use? Consider:
-   - Parameter naming
-   - Default behaviors
-   - Error messages
-   - Documentation/inline help
+8. What would make this interface easier to use?
 
 ---
 
 ## Notes
 
 - Do not write any code — only use the provided tools
-- Be honest about confusion and failures — this helps improve the interface
-- You may call tools multiple times to explore and verify behavior
-- If stuck, try different approaches and document what didn't work
+- Be honest about confusion and failures
+- Explore freely and document what you learn
