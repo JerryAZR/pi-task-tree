@@ -8,6 +8,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 
 import { createTaskManager, type TaskManager } from "./src/task-manager";
+import { ROOT_INDEX } from "./src/types";
 import type { Task, DisplayState } from "./src/types";
 import { TaskTreeError } from "./src/errors";
 
