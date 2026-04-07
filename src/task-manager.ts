@@ -654,10 +654,7 @@ export function createTaskManager(): ITaskManager {
       }
 
       if (task.index === ROOT_INDEX) {
-        return {
-          task,
-          children: store.rootList.tasks.filter(t => !t.deleted),
-        };
+        return { task };
       }
 
       const parent = tasks.get(task.parentIndex);
@@ -667,11 +664,7 @@ export function createTaskManager(): ITaskManager {
         throw new Error(`INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found.`);
       }
 
-      return {
-        task,
-        parent,
-        children: task.children?.tasks.filter(t => !t.deleted) ?? [],
-      };
+      return { task, parent };
     },
 
     // WHAT: Update task title or description

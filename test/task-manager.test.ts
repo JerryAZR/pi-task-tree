@@ -559,8 +559,8 @@ describe("Task Retrieval", () => {
     });
 
     const result = manager.get({ query: "1" });
-    expect(result.children.length).toBe(2);
-    expect(result.children[0].title).toBe("Child 1");
+    expect(result.task.children?.tasks.length).toBe(2);
+    expect(result.task.children?.tasks[0].title).toBe("Child 1");
   });
 
   test("get non-existent rejected", () => {
@@ -583,7 +583,7 @@ describe("Task Retrieval", () => {
 
     const result = manager.get({ query: "root" });
     expect(result.task.index).toBe("root");
-    expect(result.children.length).toBe(2);
+    expect(result.task.children?.tasks.length).toBe(2);
   });
 });
 

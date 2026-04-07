@@ -98,7 +98,6 @@ export interface task_get {
 export interface task_get_result {
   task: Task;
   parent?: Task;
-  children: Task[];
 }
 
 export interface task_update {

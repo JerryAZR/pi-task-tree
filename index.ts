@@ -149,14 +149,6 @@ function formatGetResult(result: { task: Task; parent?: Task; children: Task[] }
     lines.push(formatTaskDetail(result.parent, "  "));
   }
 
-  if (result.children.length > 0) {
-    lines.push("");
-    lines.push("Children:");
-    for (const child of result.children) {
-      lines.push(`  ${formatTaskBrief(child)}`);
-    }
-  }
-
   return lines.join("\n");
 }
 
