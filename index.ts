@@ -126,21 +126,9 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
     return lines.join("\n");
   }
 
-  function formatTask(t: Task, depth: number): void {
-    const indent = "  ".repeat(depth);
-    lines.push(`${indent}${formatTaskBrief(t)}`);
-
-    if (t.children && t.children.tasks.length > 0) {
-      // Filter out deleted children for display
-      const activeChildren = t.children.tasks.filter(child => !child.deleted);
-      for (const child of activeChildren) {
-        formatTask(child, depth + 1);
-      }
-    }
-  }
-
+  // doList already flattens the tree in DFS order, so just iterate
   for (const task of result.tree) {
-    formatTask(task, 0);
+    lines.push(formatTaskBrief(task));
   }
 
   return lines.join("\n");
