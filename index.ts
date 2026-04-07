@@ -142,26 +142,27 @@ function formatGetResult(result: { task: Task; parent?: Task }): string {
   const { task, parent } = result;
   const state = getDisplayState(task);
 
-  // Main task line
-  lines.push(`${task.index} ${DISPLAY_ICONS[state]} ${task.title}`);
-
-  // Description
+  lines.push(`# TASK ${task.index}: ${task.title}`);
+  lines.push(`> status: ${DISPLAY_ICONS[state]} ${state}`);
+  lines.push("");
   if (task.description) {
     lines.push(task.description);
+  } else {
+    lines.push("(no description)");
   }
 
-  // Subtasks inline
   if (task.children && task.children.tasks.length > 0) {
-    const active = task.children.tasks.filter((t: Task) => !t.deleted);
-    const subtaskStr = active.map((t: Task) => `${t.index} ${DISPLAY_ICONS[getDisplayState(t)]}`).join(" | ");
-    lines.push(`SubTasks: ${subtaskStr}`);
+    lines.push("");
+    lines.push("## SubTask List");
+    for (const child of task.children.tasks) {
+      lines.push(`- ${child.index} ${DISPLAY_ICONS[getDisplayState(child)]} ${child.title}`);
+    }
   }
 
-  // Parent context
   if (parent) {
-    const parentState = getDisplayState(parent);
-    lines.push("---");
-    lines.push(`Parent: ${parent.index} ${DISPLAY_ICONS[parentState]} ${parent.title}`);
+    lines.push("");
+    lines.push("## Parent");
+    lines.push(`- ${parent.index} ${DISPLAY_ICONS[getDisplayState(parent)]} ${parent.title}`);
   }
 
   return lines.join("\n");
