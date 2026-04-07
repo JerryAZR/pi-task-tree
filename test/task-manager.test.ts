@@ -84,18 +84,18 @@ describe("Task Creation", () => {
       expect(roots.roots.length).toBe(2);
     });
 
-    test("create under non-existent parent throws internal error", () => {
+    test("create under non-existent parent throws NOT_FOUND", () => {
       manager.createRoot({
         title: "Plan",
         items: [{ title: "Parent" }],
       });
 
-      expect(() =>
+      expectError(() =>
         manager.breakdown({
           items: [{ title: "Child" }],
           parent: "99",
         })
-      ).toThrow(/INTERNAL ERROR.*Parent task "99" not found/);
+      , "NOT_FOUND");
     });
   });
 

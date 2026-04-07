@@ -419,8 +419,10 @@ export function createTaskManager(): ITaskManager {
     const parentIndex = parent ?? ROOT_INDEX;
     const parentTask = tasks.get(parentIndex);
 
+    // WHAT: Validate parent exists (user error, not internal)
+    // WHY: Users may provide wrong parent index
     if (!parentTask) {
-      throw new Error(`INTERNAL ERROR: Parent task "${parentIndex}" not found in task map.`);
+      throw ERRORS.NOT_FOUND(parentIndex);
     }
 
     // WHAT: Can't add children to completed or deleted tasks
@@ -652,6 +654,8 @@ export function createTaskManager(): ITaskManager {
       }
 
       const parent = tasks.get(task.parentIndex);
+      // WHAT: This indicates data corruption (parent should always exist)
+      // WHY: Children are deleted when parents are deleted, so this shouldn't happen
       if (!parent) {
         throw new Error(`INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found.`);
       }
