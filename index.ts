@@ -142,6 +142,7 @@ function formatGetResult(result: { task: Task; parent?: Task }): string {
   const { task, parent } = result;
   const state = getDisplayState(task);
 
+  // 1. The task itself
   lines.push(`# TASK ${task.index}: ${task.title}`);
   lines.push(`> status: ${DISPLAY_ICONS[state]} ${state}`);
   lines.push("");
@@ -151,18 +152,48 @@ function formatGetResult(result: { task: Task; parent?: Task }): string {
     lines.push("(no description)");
   }
 
+  // 2. Subtasks
   if (task.children && task.children.tasks.length > 0) {
     lines.push("");
-    lines.push("## SubTask List");
+    lines.push("## SubTasks");
     for (const child of task.children.tasks) {
-      lines.push(`- ${child.index} ${DISPLAY_ICONS[getDisplayState(child)]} ${child.title}`);
+      const childState = getDisplayState(child);
+      lines.push(`- ${child.index} ${DISPLAY_ICONS[childState]} ${child.title}`);
     }
   }
 
-  if (parent) {
+  // 3. Parent context (skip synthetic root)
+  if (parent && parent.index !== "root") {
     lines.push("");
     lines.push("## Parent");
-    lines.push(`- ${parent.index} ${DISPLAY_ICONS[getDisplayState(parent)]} ${parent.title}`);
+    lines.push(`**${parent.title}**`);
+    if (parent.description) {
+      lines.push(parent.description);
+    }
+  }
+
+  // 4. Siblings (from parent's children)
+  if (parent && parent.children && parent.children.tasks.length > 0) {
+    const siblings = parent.children.tasks.filter((t: Task) => !t.deleted);
+    if (siblings.length > 1) {
+      lines.push("");
+      lines.push("## Siblings");
+      for (const sib of siblings) {
+        const marker = sib.index === task.index ? "→ " : "  ";
+        const sibState = getDisplayState(sib);
+        lines.push(`${marker}${sib.index} ${DISPLAY_ICONS[sibState]} ${sib.title}`);
+      }
+    }
+  }
+
+  // 5. Root/Project context (only for non-root tasks, and only if has actual description)
+  if (task.index !== "root" && task.parentIndex === "root" && task.description) {
+    // Check if description is the synthetic root message
+    if (!task.description.startsWith("Synthetic")) {
+      lines.push("");
+      lines.push("## Project");
+      lines.push(task.description);
+    }
   }
 
   return lines.join("\n");
