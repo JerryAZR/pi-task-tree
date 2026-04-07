@@ -104,7 +104,7 @@ export interface task_get_result {
 export interface task_update {
   index: string;
   title?: string;
-  description?: string | null;
+  description?: string;  // undefined = leave unchanged, empty string = clear
 }
 
 export interface task_update_result {

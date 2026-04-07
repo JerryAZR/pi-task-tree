@@ -45,7 +45,7 @@ const TaskGetParams = Type.Object({
 const TaskUpdateParams = Type.Object({
   index: Type.String({ description: "Task index or title to update" }),
   title: Type.Optional(Type.String({ description: "New title - omit to leave unchanged" })),
-  description: Type.Optional(Type.Union([Type.String(), Type.Null()] as const, { description: "New description - omit to leave unchanged, null to clear" })),
+  description: Type.Optional(Type.String({ description: "New description - empty string clears" })),
 });
 
 const TaskCloseParams = Type.Object({
@@ -354,12 +354,10 @@ export default function (pi: ExtensionAPI) {
       try {
         const p = params as { index?: unknown; title?: unknown; description?: unknown };
         const index = normalizeIndexOrTitle(p.index);
-        let description: string | undefined;
-        if (p.description === null || p.description === 'null' || p.description === 'undefined') {
-          description = undefined;
-        } else if (typeof p.description === 'string') {
-          description = p.description;
-        }
+        // Empty string clears description, undefined leaves unchanged
+        const description = typeof p.description === 'string' 
+          ? (p.description === '' ? undefined : p.description)
+          : undefined;
         const result = getManager().update({ index, title: p.title as string | undefined, description });
         return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }] };
       } catch (error) {

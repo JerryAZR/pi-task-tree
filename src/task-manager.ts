@@ -699,7 +699,7 @@ export function createTaskManager(): ITaskManager {
       }
 
       if (description !== undefined) {
-        task.description = description ?? undefined;
+        task.description = description === '' ? undefined : description;
       }
 
       persistTasks();

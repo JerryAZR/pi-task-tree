@@ -500,7 +500,7 @@ describe("Task Update", () => {
       items: [{ title: "Task", description: "Old" }],
     });
 
-    manager.update({ index: "1", description: null });
+    manager.update({ index: "1", description: "" });
     expect(manager.getState().getTask("1")!.description).toBeUndefined();
   });
 
