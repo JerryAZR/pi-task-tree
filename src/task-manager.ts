@@ -432,13 +432,9 @@ export function createTaskManager(): ITaskManager {
     const hasChildren = existingChildren && existingChildren.tasks.length > 0;
 
     // WHAT: Mode handling
-    // WHY: new=error if exists, append=add to end, override=replace all, insert=insert before target
+    // WHY: new=error if exists, insert=requires before param
     if (mode === "new" && hasChildren) {
       throw ERRORS.LIST_EXISTS(parentIndex);
-    } else if (mode === "override" && existingChildren) {
-      for (const oldTask of existingChildren.tasks) {
-        deleteTaskAndDescendants(oldTask, tasks);
-      }
     } else if (mode === "insert") {
       // Validate beforeIndex exists in parent's children
       if (!beforeIndex) {
