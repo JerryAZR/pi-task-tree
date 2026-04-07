@@ -783,10 +783,13 @@ export function createTaskManager(): ITaskManager {
       if (hasPendingChildren(task)) {
         const pendingChildren = task.children!.tasks
           .filter(t => !t.completed && !t.deleted)
-          .map(t => t.index);
+          .map(t => `  - ${t.index}: ${t.title}`);
         throw new TaskTreeError(
           "HAS_PENDING_CHILDREN",
-          `Cannot complete task "${task.index}" - has incomplete children: ${pendingChildren.join(", ")}. Complete or delete children first.`
+          `Cannot complete "${task.index}" - has incomplete children:
+${pendingChildren.join("\n")}
+
+Complete or delete these children first.`
         );
       }
 
