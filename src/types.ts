@@ -69,14 +69,16 @@ export interface task_create_root_result {
 export interface task_breakdown {
   items: CreateListItem[];
   parent: string;
-  mode?: "new" | "append" | "override";
+  mode?: "new" | "append" | "override" | "insert";
+  before?: string;  // For insert mode: task index to insert before
 }
 
 // Add tasks to root of active plan
 // This is a convenience wrapper around breakdown with parent=root
 export interface task_add_task {
   items: CreateListItem[];
-  mode?: "new" | "append" | "override";
+  mode?: "new" | "append" | "override" | "insert";
+  before?: string;  // For insert mode: task index to insert before
 }
 
 export interface task_list_roots_result {

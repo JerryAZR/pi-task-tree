@@ -407,7 +407,12 @@ export function createTaskManager(): ITaskManager {
   // WHAT: Core logic for creating tasks under any parent
   // WHY: Shared by createRoot, addTask, and breakdown with different parameters
 
-  function doCreateList(items: CreateListItem[], parent: string | null | undefined, mode: string): { tree: Task[]; rootProgress: Progress } {
+  function doCreateList(
+    items: CreateListItem[],
+    parent: string | null | undefined,
+    mode: string,
+    beforeIndex?: string
+  ): { tree: Task[]; rootProgress: Progress } {
     const parentIndex = parent ?? ROOT_INDEX;
     const parentTask = tasks.get(parentIndex);
 
@@ -427,26 +432,75 @@ export function createTaskManager(): ITaskManager {
     const hasChildren = existingChildren && existingChildren.tasks.length > 0;
 
     // WHAT: Mode handling
-    // WHY: new=error if exists, append=add to end, override=replace all
+    // WHY: new=error if exists, append=add to end, override=replace all, insert=insert before target
     if (mode === "new" && hasChildren) {
       throw ERRORS.LIST_EXISTS(parentIndex);
     } else if (mode === "override" && existingChildren) {
       for (const oldTask of existingChildren.tasks) {
         deleteTaskAndDescendants(oldTask, tasks);
       }
+    } else if (mode === "insert") {
+      // Validate beforeIndex exists in parent's children
+      if (!beforeIndex) {
+        throw new TaskTreeError("INVALID_INPUT", "insert mode requires 'before' parameter");
+      }
+      const beforeTask = tasks.get(beforeIndex);
+      if (!beforeTask || beforeTask.parentIndex !== parentIndex) {
+        throw ERRORS.NOT_FOUND(beforeIndex);
+      }
     }
 
-    // WHAT: Calculate task indices based on parent scope
+    // WHAT: Calculate task indices based on mode and parent scope
     // WHY: Index pattern: root tasks are 1,2,3; children of 1 are 1.1,1.2,1.3
     const scopePrefix = parentIndex === ROOT_INDEX ? "" : parentIndex + ".";
     const existingCount = existingChildren?.tasks.length ?? 0;
-    const startIndex = mode === "append" ? existingCount + 1 : 1;
+    const existingList = existingChildren?.tasks ?? [];
+
+    // WHAT: Determine insertion point for insert mode
+    // WHY: Find position of beforeIndex to insert at correct location
+    let insertPosition = existingList.length;  // Default: append
+    if (mode === "insert" && beforeIndex) {
+      insertPosition = existingList.findIndex(t => t.index === beforeIndex);
+      if (insertPosition === -1) {
+        throw ERRORS.NOT_FOUND(beforeIndex);
+      }
+    }
+
+    // WHAT: For insert mode, renumber all tasks from insertion point FIRST
+    // WHY: Then create new tasks with correct indices without overwriting
+    if (mode === "insert") {
+      // Capture original indices BEFORE modifying
+      const renumberedAfter: { original: string; task: Task }[] = [];
+      for (let j = insertPosition; j < existingList.length; j++) {
+        const oldTask = existingList[j];
+        const oldIndex = oldTask.index;
+        const parts = oldIndex.split(".");
+        const lastPart = parseInt(parts[parts.length - 1]) + items.length;
+        parts[parts.length - 1] = String(lastPart);
+        const newIndex = parts.join(".");
+
+        oldTask.index = newIndex;
+        tasks.delete(oldIndex);
+        tasks.set(newIndex, oldTask);
+        renumberedAfter.push({ original: oldIndex, task: oldTask });
+      }
+    }
 
     // WHAT: Create task objects with sequential indices
+    // WHY: For insert mode, the index comes from the renumbered position
     const taskObjects: Task[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      const index = scopePrefix + String(startIndex + i);
+      // For insert: use position + 1 (already renumbered), for append: existingCount + 1, for new: 1
+      let baseIndex: number;
+      if (mode === "insert") {
+        baseIndex = insertPosition + i + 1;  // +1 because positions are 1-based
+      } else if (mode === "append") {
+        baseIndex = existingCount + i + 1;
+      } else {
+        baseIndex = i + 1;
+      }
+      const index = scopePrefix + String(baseIndex);
 
       const task: Task = {
         index,
@@ -460,10 +514,26 @@ export function createTaskManager(): ITaskManager {
       taskObjects.push(task);
     }
 
-    // WHAT: Merge or replace children based on mode
-    const allChildren = mode === "append" && existingChildren
-      ? [...existingChildren.tasks, ...taskObjects]
-      : taskObjects;
+    // WHAT: Build new children list based on mode
+    // WHY: Different modes handle children merging differently
+    let allChildren: Task[];
+
+    if (mode === "override") {
+      allChildren = taskObjects;
+    } else if (mode === "insert") {
+      const before = existingList.slice(0, insertPosition);
+      // Use the captured renumbered tasks
+      const renumberedAfter: Task[] = [];
+      for (let j = insertPosition; j < existingList.length; j++) {
+        renumberedAfter.push(existingList[j]);
+      }
+      allChildren = [...before, ...taskObjects, ...renumberedAfter];
+    } else {
+      // append or new
+      allChildren = mode === "append" && existingChildren
+        ? [...existingChildren.tasks, ...taskObjects]
+        : taskObjects;
+    }
 
     const taskList: TaskList = { tasks: allChildren };
 
@@ -592,8 +662,8 @@ export function createTaskManager(): ITaskManager {
       if (!activeId) {
         throw ERRORS.NO_ACTIVE_ROOT();
       }
-      const { items, parent, mode = "new" } = params;
-      const result = doCreateList(items, parent, mode);
+      const { items, parent, mode = "new", before } = params;
+      const result = doCreateList(items, parent, mode, before);
       persistTasks();
       return result;
     },
@@ -798,13 +868,13 @@ export function createTaskManager(): ITaskManager {
 
     // WHAT: Add tasks to root level of active plan
     // WHY: Convenience wrapper for extending existing plans
-    addTask(params: { items: CreateListItem[]; mode?: string }): { tree: Task[]; rootProgress: Progress } {
+    addTask(params: { items: CreateListItem[]; mode?: string; before?: string }): { tree: Task[]; rootProgress: Progress } {
       if (!activeId) {
         throw ERRORS.NO_ACTIVE_ROOT();
       }
       // WHAT: Default to append mode
       // WHY: Natural behavior for "add more tasks"
-      const result = doCreateList(params.items, ROOT_INDEX, params.mode ?? "append");
+      const result = doCreateList(params.items, ROOT_INDEX, params.mode ?? "append", params.before);
       persistTasks();
       return result;
     },

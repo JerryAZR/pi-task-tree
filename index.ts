@@ -26,16 +26,18 @@ const TaskCreateRootParams = Type.Object({
 const TaskBreakdownParams = Type.Object({
   items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
   parent: Type.String({ description: "Parent task index to add subtasks under (e.g., '1' or '1.2')" }),
-  mode: Type.Optional(StringEnum(["new", "append", "override"] as const, {
-    description: "Mode: new (fails if children exist), append (adds), override (replaces)"
+  mode: Type.Optional(StringEnum(["new", "append", "override", "insert"] as const, {
+    description: "new: fails if children exist. append: adds to end. override: replaces. insert: inserts before 'before'."
   })),
+  before: Type.Optional(Type.String({ description: "For insert mode: task index to insert before" })),
 });
 
 const TaskAddTaskParams = Type.Object({
   items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
-  mode: Type.Optional(StringEnum(["append", "override"] as const, {
-    description: "Mode: append (adds to existing), override (replaces)"
+  mode: Type.Optional(StringEnum(["append", "override", "insert"] as const, {
+    description: "append: adds to end. override: replaces. insert: inserts before 'before'."
   })),
+  before: Type.Optional(Type.String({ description: "For insert mode: task index to insert before" })),
 });
 
 const TaskGetParams = Type.Object({
