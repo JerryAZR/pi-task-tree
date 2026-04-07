@@ -252,6 +252,29 @@ describe("Task Creation", () => {
       expect(state.indexMap.has("1.2")).toBe(false);
     });
   });
+
+  test("insert mode inserts tasks and updates map", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task 1" }, { title: "Task 2" }, { title: "Task 3" }],
+    });
+
+    // Insert two tasks before task 2
+    manager.addTask({ items: [{ title: "X" }, { title: "Y" }], mode: "insert", before: "2" });
+
+    // Check tree order
+    const tree = manager.list({ mode: "full" }).tree;
+    expect(tree.map(t => t.title)).toEqual(["Task 1", "X", "Y", "Task 2", "Task 3"]);
+
+    // Check all tasks exist in map
+    const state = manager.getState();
+    expect(state.indexMap.get("1")?.title).toBe("Task 1");
+    expect(state.indexMap.get("2")?.title).toBe("X");
+    expect(state.indexMap.get("3")?.title).toBe("Y");
+    expect(state.indexMap.get("4")?.title).toBe("Task 2");
+    expect(state.indexMap.get("5")?.title).toBe("Task 3");
+    expect(state.indexMap.size).toBe(6);  // root + 5 tasks
+  });
 });
 
 describe("Task Complete", () => {
