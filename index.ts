@@ -103,9 +103,16 @@ function formatTaskDetail(task: Task, indent = ""): string {
   } else {
     lines.push(`${indent}(no description)`);
   }
-  lines.push(``); // Extra line before subtask list
-  lines.push(`${indent}## SubTask List`);
-  // TODO: Display briefs of subtasks
+
+  // Subtask list
+  if (task.children && task.children.tasks.length > 0) {
+    lines.push(``);
+    lines.push(`${indent}## SubTask List`);
+    for (const child of task.children.tasks) {
+      const childState = getDisplayState(child);
+      lines.push(`${indent}- ${DISPLAY_ICONS[childState]} **${child.index}** ${child.title}`);
+    }
+  }
 
   return lines.join("\n");
 }
