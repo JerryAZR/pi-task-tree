@@ -664,10 +664,10 @@ export function createTaskManager(): ITaskManager {
         throw new Error(`INTERNAL ERROR: Parent "${task.parentIndex}" of task "${task.index}" not found.`);
       }
 
-      // WHAT: Include root metadata for root-level tasks
-      // WHY: Provides project context
+      // WHAT: Include root metadata for all tasks
+      // WHY: Provides project context even when working on deep tasks
       let root: { title: string; description?: string } | undefined;
-      if (task.parentIndex === ROOT_INDEX && activeId) {
+      if (activeId) {
         const rootMeta = manifest.roots.find(r => r.id === activeId);
         if (rootMeta) {
           root = { title: rootMeta.title, description: rootMeta.description };

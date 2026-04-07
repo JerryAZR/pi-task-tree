@@ -186,7 +186,7 @@ function formatGetResult(result: { task: Task; parent?: Task; root?: { title: st
     }
   }
 
-  // 5. Root/Project context
+  // 5. Root/Project context (useful for any task to understand overall goal)
   if (root) {
     lines.push("");
     lines.push("## Project");
