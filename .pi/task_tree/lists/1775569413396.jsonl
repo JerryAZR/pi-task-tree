@@ -1,0 +1,7 @@
+{"version":1}
+{"index":"1","parentIndex":"root","title":"Task 1","completed":false,"deleted":false}
+{"index":"1.1","parentIndex":"1","title":"1.1","completed":false,"deleted":false}
+{"index":"1.1.1","parentIndex":"1.1","title":"1.1.1","completed":true,"deleted":false}
+{"index":"1.1.2","parentIndex":"1.1","title":"1.1.2","completed":false,"deleted":false}
+{"index":"1.2","parentIndex":"1","title":"1.2","completed":false,"deleted":false}
+{"index":"2","parentIndex":"root","title":"Task 2","completed":false,"deleted":false}

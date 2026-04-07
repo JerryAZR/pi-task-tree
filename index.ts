@@ -126,9 +126,12 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
     return lines.join("\n");
   }
 
-  // doList already flattens the tree in DFS order, so just iterate
+  // doList already flattens the tree in DFS order
+  // Depth = number of dots in index (1.1.1 = depth 2)
   for (const task of result.tree) {
-    lines.push(formatTaskBrief(task));
+    const depth = (task.index.match(/\./g) || []).length;
+    const indent = "  ".repeat(depth);
+    lines.push(`${indent}${formatTaskBrief(task)}`);
   }
 
   return lines.join("\n");
