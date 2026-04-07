@@ -137,16 +137,31 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
   return lines.join("\n");
 }
 
-function formatGetResult(result: { task: Task; parent?: Task; children: Task[] }): string {
+function formatGetResult(result: { task: Task; parent?: Task }): string {
   const lines: string[] = [];
+  const { task, parent } = result;
+  const state = getDisplayState(task);
 
-  lines.push("Task:");
-  lines.push(formatTaskDetail(result.task, "  "));
+  // Main task line
+  lines.push(`${task.index} ${DISPLAY_ICONS[state]} ${task.title}`);
 
-  if (result.parent) {
-    lines.push("");
-    lines.push("Parent:");
-    lines.push(formatTaskDetail(result.parent, "  "));
+  // Description
+  if (task.description) {
+    lines.push(task.description);
+  }
+
+  // Subtasks inline
+  if (task.children && task.children.tasks.length > 0) {
+    const active = task.children.tasks.filter((t: Task) => !t.deleted);
+    const subtaskStr = active.map((t: Task) => `${t.index} ${DISPLAY_ICONS[getDisplayState(t)]}`).join(" | ");
+    lines.push(`SubTasks: ${subtaskStr}`);
+  }
+
+  // Parent context
+  if (parent) {
+    const parentState = getDisplayState(parent);
+    lines.push("---");
+    lines.push(`Parent: ${parent.index} ${DISPLAY_ICONS[parentState]} ${parent.title}`);
   }
 
   return lines.join("\n");
