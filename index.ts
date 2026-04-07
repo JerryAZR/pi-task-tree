@@ -277,14 +277,14 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_add_task
+  // task_extend_root
   pi.registerTool({
-    name: "task_add_task",
-    label: "Task Add",
-    description: "Add tasks to the root of the active plan. Use this to extend an existing plan.",
+    name: "task_extend_root",
+    label: "Extend Root",
+    description: "Add tasks to the root level of the active plan. Use this to extend an existing plan.",
     promptSnippet: "Add tasks to an existing plan",
     promptGuidelines: [
-      "Use this tool to add new tasks to the root level of an existing plan",
+      "Use this tool to add new tasks to the root level of the active plan",
       "Requires an active task list (created with task_create_root)",
       "Use task_breakdown to add subtasks under specific tasks"
     ],
