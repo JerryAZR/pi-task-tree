@@ -20,7 +20,6 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "
 import { resolve } from "node:path";
 import type {
   Task,
-  DisplayState,
   Progress,
   TaskManager as ITaskManager,
   TaskStore,
@@ -290,24 +289,8 @@ function createSyntheticRootTask(rootList: TaskList): Task {
 // ============================================================================
 // Display State Helpers
 // ============================================================================
-// WHAT: Derive display state from stored flags
-// WHY: [⏳] is computed, not stored - agents see "in progress" naturally
-
-function getDisplayState(task: Task): DisplayState {
-  if (task.deleted) return "deleted";
-  if (task.completed) return "completed";
-  
-  // WHAT: Check if any child is completed (and not deleted)
-  // WHY: This signals "work has started but not finished"
-  if (task.children && task.children.tasks.length > 0) {
-    const hasCompletedChild = task.children.tasks.some(
-      child => child.completed && !child.deleted
-    );
-    if (hasCompletedChild) return "in_progress";
-  }
-  
-  return "pending";
-}
+// NOTE: getDisplayState is defined in index.ts for display formatting
+// The core task-manager only tracks completed/deleted flags
 
 // WHAT: Check if task has any pending children
 // WHY: Used to enforce parent completion rules
