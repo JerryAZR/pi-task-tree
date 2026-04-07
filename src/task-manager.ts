@@ -466,74 +466,72 @@ export function createTaskManager(): ITaskManager {
       }
     }
 
-    // WHAT: For insert mode, renumber all tasks from insertion point FIRST
-    // WHY: Then create new tasks with correct indices without overwriting
-    if (mode === "insert") {
-      // Capture original indices BEFORE modifying
-      const renumberedAfter: { original: string; task: Task }[] = [];
-      for (let j = insertPosition; j < existingList.length; j++) {
-        const oldTask = existingList[j];
-        const oldIndex = oldTask.index;
-        const parts = oldIndex.split(".");
-        const lastPart = parseInt(parts[parts.length - 1]) + items.length;
-        parts[parts.length - 1] = String(lastPart);
-        const newIndex = parts.join(".");
+    // WHAT: Build children list first, then assign indices
+    // WHY: Simpler algorithm - build list, then walk through and set correct indices
+    let allChildren: Task[];
 
-        oldTask.index = newIndex;
-        tasks.delete(oldIndex);
-        tasks.set(newIndex, oldTask);
-        renumberedAfter.push({ original: oldIndex, task: oldTask });
+    if (mode === "override") {
+      // Create tasks with placeholder indices, delete old children from map
+      for (const oldTask of (existingChildren?.tasks ?? [])) {
+        deleteTaskAndDescendants(oldTask, tasks);
       }
-    }
-
-    // WHAT: Create task objects with sequential indices
-    // WHY: For insert mode, the index comes from the renumbered position
-    const taskObjects: Task[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      // For insert: use position + 1 (already renumbered), for append: existingCount + 1, for new: 1
-      let baseIndex: number;
-      if (mode === "insert") {
-        baseIndex = insertPosition + i + 1;  // +1 because positions are 1-based
-      } else if (mode === "append") {
-        baseIndex = existingCount + i + 1;
-      } else {
-        baseIndex = i + 1;
-      }
-      const index = scopePrefix + String(baseIndex);
-
-      const task: Task = {
-        index,
+      const newTasks: Task[] = items.map(item => ({
+        index: "",
         parentIndex: parentIndex,
         title: item.title,
         description: item.description,
         completed: false,
         deleted: false,
-      };
-      tasks.set(task.index, task);
-      taskObjects.push(task);
-    }
-
-    // WHAT: Build new children list based on mode
-    // WHY: Different modes handle children merging differently
-    let allChildren: Task[];
-
-    if (mode === "override") {
-      allChildren = taskObjects;
+      }));
+      allChildren = newTasks;
     } else if (mode === "insert") {
+      // Split existing list, insert new tasks, concat
       const before = existingList.slice(0, insertPosition);
-      // Use the captured renumbered tasks
-      const renumberedAfter: Task[] = [];
-      for (let j = insertPosition; j < existingList.length; j++) {
-        renumberedAfter.push(existingList[j]);
-      }
-      allChildren = [...before, ...taskObjects, ...renumberedAfter];
+      const after = existingList.slice(insertPosition);
+      const newTasks: Task[] = items.map(item => ({
+        index: "",
+        parentIndex: parentIndex,
+        title: item.title,
+        description: item.description,
+        completed: false,
+        deleted: false,
+      }));
+      allChildren = [...before, ...newTasks, ...after];
     } else {
       // append or new
+      const newTasks: Task[] = items.map((item, i) => ({
+        index: "",
+        parentIndex: parentIndex,
+        title: item.title,
+        description: item.description,
+        completed: false,
+        deleted: false,
+      }));
       allChildren = mode === "append" && existingChildren
-        ? [...existingChildren.tasks, ...taskObjects]
-        : taskObjects;
+        ? [...existingChildren.tasks, ...newTasks]
+        : newTasks;
     }
+
+    // WHAT: Assign correct indices to all children recursively
+    // WHY: After building the list, walk through and set indices
+    function assignIndices(children: Task[], prefix: string): void {
+      for (let i = 0; i < children.length; i++) {
+        const task = children[i];
+        const newIndex = prefix + String(i + 1);
+        // Update map: remove old index, add new index
+        if (task.index && task.index !== newIndex) {
+          tasks.delete(task.index);
+        }
+        task.index = newIndex;
+        tasks.set(newIndex, task);
+        // Recursively assign indices to children
+        if (task.children) {
+          assignIndices(task.children.tasks, newIndex + ".");
+        }
+      }
+    }
+
+    assignIndices(allChildren, scopePrefix);
 
     const taskList: TaskList = { tasks: allChildren };
 
@@ -547,7 +545,20 @@ export function createTaskManager(): ITaskManager {
 
     // WHAT: Return path to first added task (or empty tree if nothing added)
     // WHY: Focuses on what was just added instead of full tree
-    const targetIndex = taskObjects.length > 0 ? taskObjects[0].index : undefined;
+    let targetIndex: string | undefined;
+    if (items.length > 0) {
+      if (mode === "insert") {
+        // First new task is at insert position
+        targetIndex = allChildren[insertPosition]?.index;
+      } else if (mode === "override") {
+        // First new task is at position 0
+        targetIndex = allChildren[0]?.index;
+      } else {
+        // append or new: first new task
+        const basePos = mode === "append" && existingChildren ? existingChildren.tasks.length : 0;
+        targetIndex = allChildren[basePos]?.index;
+      }
+    }
     return doList(targetIndex ? "path" : "focus", targetIndex);
   }
 
