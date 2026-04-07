@@ -64,7 +64,7 @@ const TaskListParams = Type.Object({
 function getDisplayState(task: Task): DisplayState {
   if (task.deleted) return "deleted";
   if (task.completed) return "completed";
-  
+
   // Check if has completed children (derived in_progress)
   if (task.children && task.children.tasks.length > 0) {
     const hasCompletedChild = task.children.tasks.some(
@@ -72,7 +72,7 @@ function getDisplayState(task: Task): DisplayState {
     );
     if (hasCompletedChild) return "in_progress";
   }
-  
+
   return "pending";
 }
 
@@ -95,12 +95,18 @@ function formatTaskBrief(task: Task): string {
 function formatTaskDetail(task: Task, indent = ""): string {
   const lines: string[] = [];
   const state = getDisplayState(task);
-  lines.push(`${indent}index:    ${task.index}`);
-  lines.push(`${indent}title:    ${task.title}`);
-  lines.push(`${indent}status:   ${state}`);
+  lines.push(`${indent}# TASK ${task.index}: ${task.title}`);
+  lines.push(`${indent}> status: ${DISPLAY_ICONS[state]} ${state}`);
+  lines.push(``); // Extra line before detailed description
   if (task.description) {
-    lines.push(`${indent}desc:     ${task.description}`);
+    lines.push(`${indent}${task.description}`);
+  } else {
+    lines.push(`${indent}(no description)`);
   }
+  lines.push(``); // Extra line before subtask list
+  lines.push(`${indent}## SubTask List`);
+  // TODO: Display briefs of subtasks
+
   return lines.join("\n");
 }
 
@@ -210,15 +216,15 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
         const p = params as { title?: unknown; description?: unknown; items?: unknown };
-        
+
         if (!p.title || typeof p.title !== "string") {
           throw new TaskTreeError("INVALID_INPUT", "title is required");
         }
-        
+
         if (!Array.isArray(p.items) || p.items.length === 0) {
           throw new TaskTreeError("INVALID_INPUT", "items array with at least one task is required");
         }
-        
+
         const m = getManager();
         const result = m.createRoot({
           title: p.title.trim(),
@@ -251,11 +257,11 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
         const p = params as { items?: unknown; mode?: unknown };
-        
+
         if (!Array.isArray(p.items) || p.items.length === 0) {
           throw new TaskTreeError("INVALID_INPUT", "items array with at least one task is required");
         }
-        
+
         const count = p.items.length;
         const result = getManager().addTask({
           items: p.items as { title: string; description?: string }[],
@@ -265,7 +271,7 @@ export default function (pi: ExtensionAPI) {
         const text = count === 1
           ? `Added 1 task`
           : `Added ${count} tasks`;
-        
+
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);
@@ -289,15 +295,15 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: unknown, _signal: unknown, _onUpdate: unknown, _ctx: unknown) {
       try {
         const p = params as { items?: unknown; parent?: unknown; mode?: unknown };
-        
+
         if (!Array.isArray(p.items)) {
           throw new TaskTreeError("INVALID_INPUT", "items array is required");
         }
-        
+
         if (!p.parent || typeof p.parent !== "string") {
           throw new TaskTreeError("INVALID_INPUT", "parent (task index) is required");
         }
-        
+
         const count = p.items.length;
         const result = getManager().breakdown({
           items: p.items as { title: string; description?: string }[],
@@ -308,7 +314,7 @@ export default function (pi: ExtensionAPI) {
         const text = count === 1
           ? `Added 1 task under ${p.parent}`
           : `Added ${count} tasks under ${p.parent}`;
-        
+
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);
@@ -354,7 +360,7 @@ export default function (pi: ExtensionAPI) {
         const p = params as { index?: unknown; title?: unknown; description?: unknown };
         const index = normalizeIndexOrTitle(p.index);
         // Empty string clears description, undefined leaves unchanged
-        const description = typeof p.description === 'string' 
+        const description = typeof p.description === 'string'
           ? (p.description === '' ? undefined : p.description)
           : undefined;
         const result = getManager().update({ index, title: p.title as string | undefined, description });
@@ -383,13 +389,13 @@ export default function (pi: ExtensionAPI) {
         const p = params as { index?: unknown; mode?: unknown };
         const index = normalizeIndexOrTitle(p.index);
         const mode = p.mode as "complete" | "delete";
-        
+
         if (mode !== "complete" && mode !== "delete") {
           throw new TaskTreeError("INVALID_INPUT", "mode must be 'complete' or 'delete'");
         }
-        
+
         const result = getManager().close({ index, mode });
-        const text = mode === "complete" 
+        const text = mode === "complete"
           ? `Completed ${index}`
           : `Deleted ${index}`;
         return { content: [{ type: "text", text: `${text}\n\n${formatListResult(result)}` }] };
