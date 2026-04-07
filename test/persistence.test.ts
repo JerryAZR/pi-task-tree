@@ -193,7 +193,7 @@ describe("Nested Tree Structure", () => {
   });
 });
 
-describe("Task Close", () => {
+describe("Task Complete", () => {
   test("complete marks task done", () => {
     const manager = createTaskManager();
     manager.createRoot({
@@ -201,7 +201,7 @@ describe("Task Close", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.close({ index: "1", mode: "complete" });
+    manager.complete({ index: "1" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -212,10 +212,12 @@ describe("Task Close", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.close({ index: "1", mode: "complete" });
-    expect(() => manager.close({ index: "1", mode: "complete" })).toThrow("already completed");
+    manager.complete({ index: "1" });
+    expect(() => manager.complete({ index: "1" })).toThrow("already completed");
   });
+});
 
+describe("Task Delete", () => {
   test("delete removes children", () => {
     const manager = createTaskManager();
     manager.createRoot({
@@ -228,7 +230,7 @@ describe("Task Close", () => {
       parent: "1",
     });
 
-    manager.close({ index: "1", mode: "delete" });
+    manager.delete({ index: "1" });
 
     const state = manager.getState();
     expect(state.indexMap.get("1")?.deleted).toBe(true);

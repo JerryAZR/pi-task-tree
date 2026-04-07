@@ -112,15 +112,20 @@ export interface task_update_result {
   task: Task;
 }
 
-// task_close handles both complete and delete
-export type CloseMode = "complete" | "delete";
-
-export interface task_close {
+export interface task_complete {
   index: string;
-  mode: CloseMode;
 }
 
-export interface task_close_result {
+export interface task_complete_result {
+  tree: Task[];
+  rootProgress: Progress;
+}
+
+export interface task_delete {
+  index: string;
+}
+
+export interface task_delete_result {
   tree: Task[];
   rootProgress: Progress;
 }
@@ -152,7 +157,8 @@ export interface TaskManager {
   // Task operations
   get(params: task_get): task_get_result;
   update(params: task_update): task_update_result;
-  close(params: task_close): task_close_result;
+  complete(params: task_complete): task_complete_result;
+  delete(params: task_delete): task_delete_result;
   list(params: task_list): task_list_result;
   addTask(params: task_add_task): task_list_result;
 }

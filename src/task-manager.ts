@@ -21,8 +21,10 @@ import type {
   task_get_result,
   task_update,
   task_update_result,
-  task_close,
-  task_close_result,
+  task_complete,
+  task_complete_result,
+  task_delete,
+  task_delete_result,
   task_list,
   task_list_result,
 } from "./types";
@@ -605,50 +607,59 @@ export function createTaskManager(): ITaskManager {
       return { task };
     },
 
-    close(params: task_close): { tree: Task[]; rootProgress: Progress } {
-      const { index, mode } = params;
+    complete(params: task_complete): { tree: Task[]; rootProgress: Progress } {
+      const { index } = params;
 
       let task: Task | undefined = tasks.get(index);
-
       if (!task) {
         task = findTaskByTitle(tasks, index);
       }
 
-      if (mode === "complete") {
-        if (task.completed) {
-          throw ERRORS.ALREADY_COMPLETED(task.index);
-        }
-        if (task.deleted) {
-          throw new TaskTreeError("TASK_DELETED", `Task "${task.index}" is deleted`);
-        }
-        // Check if has pending children
-        if (hasPendingChildren(task)) {
-          const pendingChildren = task.children!.tasks
-            .filter(t => !t.completed && !t.deleted)
-            .map(t => t.index);
-          throw new TaskTreeError(
-            "HAS_PENDING_CHILDREN",
-            `Cannot complete task "${task.index}" - has incomplete children: ${pendingChildren.join(", ")}. Complete or delete children first.`
-          );
-        }
-        task.completed = true;
-        lastCompletedIndex = task.index;
-        store.lastCompletedIndex = lastCompletedIndex;
-      } else if (mode === "delete") {
-        if (task.deleted) {
-          throw new TaskTreeError("ALREADY_DELETED", `Task "${task.index}" is already deleted`);
-        }
-        task.deleted = true;
-        // Remove children recursively
-        if (task.children) {
-          for (const child of task.children.tasks) {
-            deleteTaskAndDescendants(child, tasks);
-          }
-          task.children = { tasks: [] };
-        }
-        lastCompletedIndex = task.index;
-        store.lastCompletedIndex = lastCompletedIndex;
+      if (task.completed) {
+        throw ERRORS.ALREADY_COMPLETED(task.index);
       }
+      if (task.deleted) {
+        throw new TaskTreeError("TASK_DELETED", `Task "${task.index}" is deleted`);
+      }
+      // Check if has pending children
+      if (hasPendingChildren(task)) {
+        const pendingChildren = task.children!.tasks
+          .filter(t => !t.completed && !t.deleted)
+          .map(t => t.index);
+        throw new TaskTreeError(
+          "HAS_PENDING_CHILDREN",
+          `Cannot complete task "${task.index}" - has incomplete children: ${pendingChildren.join(", ")}. Complete or delete children first.`
+        );
+      }
+      task.completed = true;
+      lastCompletedIndex = task.index;
+      store.lastCompletedIndex = lastCompletedIndex;
+
+      persistTasks();
+      return doList("full");
+    },
+
+    delete(params: task_delete): { tree: Task[]; rootProgress: Progress } {
+      const { index } = params;
+
+      let task: Task | undefined = tasks.get(index);
+      if (!task) {
+        task = findTaskByTitle(tasks, index);
+      }
+
+      if (task.deleted) {
+        throw new TaskTreeError("ALREADY_DELETED", `Task "${task.index}" is already deleted`);
+      }
+      task.deleted = true;
+      // Remove children recursively
+      if (task.children) {
+        for (const child of task.children.tasks) {
+          deleteTaskAndDescendants(child, tasks);
+        }
+        task.children = { tasks: [] };
+      }
+      lastCompletedIndex = task.index;
+      store.lastCompletedIndex = lastCompletedIndex;
 
       persistTasks();
       return doList("full");

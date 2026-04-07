@@ -254,7 +254,7 @@ describe("Task Creation", () => {
   });
 });
 
-describe("Task Close (Complete/Delete)", () => {
+describe("Task Complete", () => {
   let manager: ReturnType<typeof createTaskManager>;
 
   beforeEach(() => {
@@ -267,7 +267,7 @@ describe("Task Close (Complete/Delete)", () => {
       items: [{ title: "Task" }],
     });
 
-    expectError(() => manager.close({ index: "99", mode: "complete" }), "NOT_FOUND");
+    expectError(() => manager.complete({ index: "99" }), "NOT_FOUND");
   });
 
   test("complete marks task done", () => {
@@ -276,7 +276,7 @@ describe("Task Close (Complete/Delete)", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.close({ index: "1", mode: "complete" });
+    manager.complete({ index: "1" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -286,7 +286,7 @@ describe("Task Close (Complete/Delete)", () => {
       items: [{ title: "Unique" }],
     });
 
-    manager.close({ index: "Unique", mode: "complete" });
+    manager.complete({ index: "Unique" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -296,8 +296,8 @@ describe("Task Close (Complete/Delete)", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.close({ index: "1", mode: "complete" });
-    expectError(() => manager.close({ index: "1", mode: "complete" }), "ALREADY_COMPLETED");
+    manager.complete({ index: "1" });
+    expectError(() => manager.complete({ index: "1" }), "ALREADY_COMPLETED");
   });
 
   test("complete any sibling in any order", () => {
@@ -311,12 +311,12 @@ describe("Task Close (Complete/Delete)", () => {
     });
 
     // Can complete any task in any order
-    manager.close({ index: "3", mode: "complete" });
+    manager.complete({ index: "3" });
     expect(manager.isCompleted("3")).toBe(true);
     expect(manager.isCompleted("1")).toBe(false);
     expect(manager.isCompleted("2")).toBe(false);
 
-    manager.close({ index: "1", mode: "complete" });
+    manager.complete({ index: "1" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -332,7 +332,7 @@ describe("Task Close (Complete/Delete)", () => {
     });
 
     // Cannot complete parent until children are done
-    expectError(() => manager.close({ index: "1", mode: "complete" }), "HAS_PENDING_CHILDREN");
+    expectError(() => manager.complete({ index: "1" }), "HAS_PENDING_CHILDREN");
   });
 
   test("can complete parent when all children complete", () => {
@@ -346,8 +346,8 @@ describe("Task Close (Complete/Delete)", () => {
       parent: "1",
     });
 
-    manager.close({ index: "1.1", mode: "complete" });
-    manager.close({ index: "1", mode: "complete" });
+    manager.complete({ index: "1.1" });
+    manager.complete({ index: "1" });
     expect(manager.isCompleted("1")).toBe(true);
   });
 
@@ -362,65 +362,71 @@ describe("Task Close (Complete/Delete)", () => {
       parent: "1",
     });
 
-    manager.close({ index: "1.1", mode: "delete" });
-    manager.close({ index: "1", mode: "complete" });
+    manager.delete({ index: "1.1" });
+    manager.complete({ index: "1" });
     expect(manager.isCompleted("1")).toBe(true);
   });
+});
 
-  describe("delete", () => {
-    test("delete marks task and removes children", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Parent" }],
-      });
+describe("Task Delete", () => {
+  let manager: ReturnType<typeof createTaskManager>;
 
-      manager.breakdown({
-        items: [{ title: "Child 1" }, { title: "Child 2" }],
-        parent: "1",
-      });
+  beforeEach(() => {
+    manager = createTaskManager();
+  });
 
-      manager.close({ index: "1", mode: "delete" });
-
-      const state = manager.getState();
-      expect(state.indexMap.get("1")?.deleted).toBe(true);
-      expect(state.indexMap.has("1.1")).toBe(false);
-      expect(state.indexMap.has("1.2")).toBe(false);
+  test("delete marks task and removes children", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Parent" }],
     });
 
-    test("delete already deleted rejected", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Task" }],
-      });
-
-      manager.close({ index: "1", mode: "delete" });
-      expectError(() => manager.close({ index: "1", mode: "delete" }), "ALREADY_DELETED");
+    manager.breakdown({
+      items: [{ title: "Child 1" }, { title: "Child 2" }],
+      parent: "1",
     });
 
-    test("delete completes parent with remaining children", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Parent" }],
-      });
+    manager.delete({ index: "1" });
 
-      manager.breakdown({
-        items: [
-          { title: "Child 1" },
-          { title: "Child 2" },
-        ],
-        parent: "1",
-      });
+    const state = manager.getState();
+    expect(state.indexMap.get("1")?.deleted).toBe(true);
+    expect(state.indexMap.has("1.1")).toBe(false);
+    expect(state.indexMap.has("1.2")).toBe(false);
+  });
 
-      // Complete one child
-      manager.close({ index: "1.1", mode: "complete" });
-
-      // Delete other child - parent should show [⏳] but be completable
-      manager.close({ index: "1.2", mode: "delete" });
-
-      // Now parent should be completable (only completed child remains)
-      manager.close({ index: "1", mode: "complete" });
-      expect(manager.isCompleted("1")).toBe(true);
+  test("delete already deleted rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
     });
+
+    manager.delete({ index: "1" });
+    expectError(() => manager.delete({ index: "1" }), "ALREADY_DELETED");
+  });
+
+  test("delete remaining children allows parent complete", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Parent" }],
+    });
+
+    manager.breakdown({
+      items: [
+        { title: "Child 1" },
+        { title: "Child 2" },
+      ],
+      parent: "1",
+    });
+
+    // Complete one child
+    manager.complete({ index: "1.1" });
+
+    // Delete other child
+    manager.delete({ index: "1.2" });
+
+    // Now parent should be completable
+    manager.complete({ index: "1" });
+    expect(manager.isCompleted("1")).toBe(true);
   });
 });
 
@@ -455,7 +461,7 @@ describe("Task Update", () => {
       items: [{ title: "Task" }],
     });
 
-    manager.close({ index: "1", mode: "complete" });
+    manager.complete({ index: "1" });
 
     expectError(() => manager.update({ index: "1", title: "New" }), "TASK_COMPLETED");
   });

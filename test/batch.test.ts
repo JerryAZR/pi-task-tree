@@ -114,14 +114,14 @@ describe("Batch Randomized Testing", () => {
         switch (op) {
           case 0: { // Complete
             if (taskIdx && taskIdx !== ROOT_INDEX) {
-              manager.close({ index: taskIdx, mode: "complete" });
+              manager.complete({ index: taskIdx });
               wroteState = true;
             }
             break;
           }
           case 1: { // Delete
             if (taskIdx && taskIdx !== ROOT_INDEX) {
-              manager.close({ index: taskIdx, mode: "delete" });
+              manager.delete({ index: taskIdx });
               wroteState = true;
             }
             break;
@@ -181,7 +181,7 @@ describe("Batch Randomized Testing", () => {
       expect(() => {
         switch (op) {
           case 0:
-            manager.close({ index: "nonexistent", mode: "complete" });
+            manager.complete({ index: "nonexistent" });
             break;
           case 1:
             manager.update({ index: "nonexistent", title: "Bad" });
