@@ -717,6 +717,12 @@ export function createTaskManager(): ITaskManager {
         task = findTaskByTitle(tasks, index);
       }
 
+      // WHAT: Can't complete the synthetic root task
+      // WHY: It's a system task, not a real task
+      if (task.index === ROOT_INDEX) {
+        throw ERRORS.ROOT_TASK();
+      }
+
       if (task.completed) {
         throw ERRORS.ALREADY_COMPLETED(task.index);
       }
@@ -750,6 +756,12 @@ export function createTaskManager(): ITaskManager {
       let task: Task | undefined = tasks.get(index);
       if (!task) {
         task = findTaskByTitle(tasks, index);
+      }
+
+      // WHAT: Can't delete the synthetic root task
+      // WHY: It's a system task, not a real task
+      if (task.index === ROOT_INDEX) {
+        throw ERRORS.ROOT_TASK();
       }
 
       if (task.deleted) {

@@ -270,6 +270,24 @@ describe("Task Complete", () => {
     expectError(() => manager.complete({ index: "99" }), "NOT_FOUND");
   });
 
+  test("complete root task rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
+    expectError(() => manager.complete({ index: "root" }), "ROOT_TASK");
+  });
+
+  test("delete root task rejected", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
+    expectError(() => manager.delete({ index: "root" }), "ROOT_TASK");
+  });
+
   test("complete marks task done", () => {
     manager.createRoot({
       title: "Plan",
