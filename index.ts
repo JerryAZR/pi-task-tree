@@ -268,8 +268,8 @@ export default function (pi: ExtensionAPI) {
           items: p.items as { title: string; description?: string }[],
         });
 
-        const listResult = m.list({ mode: "full" });
-        const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: listResult.tree, rootProgress: result.rootProgress })}`;
+        // Use tree from result (focused on first task) instead of full list
+        const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: result.tree, rootProgress: result.rootProgress })}`;
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);

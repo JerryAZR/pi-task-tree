@@ -62,6 +62,7 @@ export interface task_create_root {
 
 export interface task_create_root_result {
   root: Root;
+  tree: Task[];
   rootProgress: Progress;
 }
 

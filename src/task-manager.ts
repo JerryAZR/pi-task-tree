@@ -475,7 +475,10 @@ export function createTaskManager(): ITaskManager {
       parentTask.children = taskList;
     }
 
-    return doList("full");
+    // WHAT: Return path to first added task (or empty tree if nothing added)
+    // WHY: Focuses on what was just added instead of full tree
+    const targetIndex = taskObjects.length > 0 ? taskObjects[0].index : undefined;
+    return doList(targetIndex ? "path" : "focus", targetIndex);
   }
 
   // ============================================================================
@@ -558,7 +561,7 @@ export function createTaskManager(): ITaskManager {
 
     // WHAT: Create new root with initial tasks
     // WHY: Starts a new planning session, becomes active root
-    createRoot(params: task_create_root): { root: Root; rootProgress: Progress } {
+    createRoot(params: task_create_root): { root: Root; tree: Task[]; rootProgress: Progress } {
       const { title, description, items } = params;
       const id = generateRootId();
       const root: Root = {
@@ -580,7 +583,7 @@ export function createTaskManager(): ITaskManager {
       const result = doCreateList(items, undefined, "new");
       persistTasks();
 
-      return { root, rootProgress: result.rootProgress };
+      return { root, tree: result.tree, rootProgress: result.rootProgress };
     },
 
     // WHAT: Add tasks under specific parent
@@ -748,7 +751,7 @@ export function createTaskManager(): ITaskManager {
       task.completed = true;
 
       persistTasks();
-      return doList("full");
+      return doList("path", task.index);
     },
 
     // WHAT: Soft delete task and remove children
@@ -783,7 +786,7 @@ export function createTaskManager(): ITaskManager {
       }
 
       persistTasks();
-      return doList("full");
+      return doList("path", task.index);
     },
 
     // WHAT: List tasks with mode-based filtering
