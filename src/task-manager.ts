@@ -540,23 +540,10 @@ export function createTaskManager(): ITaskManager {
       parentTask.children = taskList;
     }
 
-    // WHAT: Return path to first added task (or empty tree if nothing added)
-    // WHY: Focuses on what was just added instead of full tree
-    let targetIndex: string | undefined;
-    if (items.length > 0) {
-      if (mode === "insert") {
-        // First new task is at insert position
-        targetIndex = allChildren[insertPosition]?.index;
-      } else if (mode === "override") {
-        // First new task is at position 0
-        targetIndex = allChildren[0]?.index;
-      } else {
-        // append or new: first new task
-        const basePos = mode === "append" && existingChildren ? existingChildren.tasks.length : 0;
-        targetIndex = allChildren[basePos]?.index;
-      }
-    }
-    return doList(targetIndex ? "path" : "focus", targetIndex);
+    // WHAT: Return path view focused on first sibling (or parent if empty)
+    // WHY: Path to any sibling is the same, so use first child or parent
+    const targetIndex = allChildren.length > 0 ? allChildren[0].index : parentIndex;
+    return doList("path", targetIndex);
   }
 
   // ============================================================================
