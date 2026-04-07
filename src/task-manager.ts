@@ -466,47 +466,29 @@ export function createTaskManager(): ITaskManager {
       }
     }
 
-    // WHAT: Build children list first, then assign indices
-    // WHY: Simpler algorithm - build list, then walk through and set correct indices
-    let allChildren: Task[];
+    // WHAT: Build children list based on mode
+    // WHY: Different modes assemble the list differently, but new task creation is the same
+    const newTasks: Task[] = items.map(item => ({
+      index: "",
+      parentIndex: parentIndex,
+      title: item.title,
+      description: item.description,
+      completed: false,
+      deleted: false,
+    }));
 
+    let allChildren: Task[];
     if (mode === "override") {
-      // Create tasks with placeholder indices, delete old children from map
       for (const oldTask of (existingChildren?.tasks ?? [])) {
         deleteTaskAndDescendants(oldTask, tasks);
       }
-      const newTasks: Task[] = items.map(item => ({
-        index: "",
-        parentIndex: parentIndex,
-        title: item.title,
-        description: item.description,
-        completed: false,
-        deleted: false,
-      }));
       allChildren = newTasks;
     } else if (mode === "insert") {
-      // Split existing list, insert new tasks, concat
       const before = existingList.slice(0, insertPosition);
       const after = existingList.slice(insertPosition);
-      const newTasks: Task[] = items.map(item => ({
-        index: "",
-        parentIndex: parentIndex,
-        title: item.title,
-        description: item.description,
-        completed: false,
-        deleted: false,
-      }));
       allChildren = [...before, ...newTasks, ...after];
     } else {
       // append or new
-      const newTasks: Task[] = items.map((item, i) => ({
-        index: "",
-        parentIndex: parentIndex,
-        title: item.title,
-        description: item.description,
-        completed: false,
-        deleted: false,
-      }));
       allChildren = mode === "append" && existingChildren
         ? [...existingChildren.tasks, ...newTasks]
         : newTasks;
