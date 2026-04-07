@@ -590,7 +590,9 @@ export function createTaskManager(): ITaskManager {
         throw ERRORS.NO_ACTIVE_ROOT();
       }
       const { items, parent, mode = "new" } = params;
-      return doCreateList(items, parent, mode);
+      const result = doCreateList(items, parent, mode);
+      persistTasks();
+      return result;
     },
 
     // WHAT: List all roots and indicate active
@@ -792,7 +794,9 @@ export function createTaskManager(): ITaskManager {
       }
       // WHAT: Default to append mode
       // WHY: Natural behavior for "add more tasks"
-      return doCreateList(params.items, ROOT_INDEX, params.mode ?? "append");
+      const result = doCreateList(params.items, ROOT_INDEX, params.mode ?? "append");
+      persistTasks();
+      return result;
     },
   };
 }
