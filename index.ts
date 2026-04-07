@@ -438,9 +438,26 @@ export default function (pi: ExtensionAPI) {
         const result = mode === "complete"
           ? getManager().complete({ index })
           : getManager().delete({ index });
-        const text = mode === "complete"
+
+        let text = mode === "complete"
           ? `Completed ${index}`
           : `Deleted ${index}`;
+
+        // WHAT: Check if parent now has no pending children (for complete mode)
+        // WHY: Hint agent to review and close parent if all children are done
+        if (mode === "complete") {
+          const task = getManager().getState().indexMap.get(index);
+          if (task && task.parentIndex !== ROOT_INDEX) {
+            const parent = getManager().getState().indexMap.get(task.parentIndex);
+            if (parent && parent.children) {
+              const pendingCount = parent.children.tasks.filter(t => !t.completed && !t.deleted).length;
+              if (pendingCount === 0 && !parent.completed && !parent.deleted) {
+                text += `\n\n💡 All children of "${parent.index}" are done. Review and close the parent task.`;
+              }
+            }
+          }
+        }
+
         return { content: [{ type: "text", text: `${text}\n\n${formatListResult(result)}` }] };
       } catch (error) {
         return handleError(error);
