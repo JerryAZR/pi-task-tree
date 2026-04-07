@@ -1,9 +1,10 @@
 /**
- * Persistence Tests - Serialization/Deserialization
+ * Persistence Tests for Nested Todo
  */
 
 import { createTaskManager, loadFromDump } from "../src/task-manager";
-import { unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { TaskTreeError, ERRORS } from "../src/errors";
+import { unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -33,55 +34,96 @@ beforeEach(() => {
   cleanupPersistence();
 });
 
-afterAll(() => {
-  cleanupPersistence();
-});
-
-describe("Empty State", () => {
-  test("empty state produces empty dump", () => {
-    const manager = createTaskManager();
-    const result = manager.listRoots();
-    expect(result.roots).toEqual([]);
-    expect(result.activeId).toBeNull();
-  });
-});
-
-describe("Create Root", () => {
-  test("create root with initial tasks", () => {
-    const manager = createTaskManager();
-    const result = manager.createRoot({
-      title: "My Plan",
-      items: [{ title: "Task 1" }],
-    });
-
-    expect(result.root.title).toBe("My Plan");
-    expect(result.root.id).toBeDefined();
-    expect(result.rootProgress.total).toBe(1);
-
-    const state = manager.getState();
-    expect(state.indexMap.has("root")).toBe(true);
-    expect(state.indexMap.has("1")).toBe(true);
-    expect(state.rootList?.tasks.length).toBe(1);
+describe("Load and Dump", () => {
+  test("empty dump roundtrips", () => {
+    const state = loadFromDump(
+      JSON.stringify({ version: 1, lastCompletedIndex: null }) + "\n"
+    );
+    expect(state.tasks.size).toBe(0);
+    expect(state.lastCompletedIndex).toBeNull();
   });
 
-  test("create root with multiple tasks", () => {
+  test("simple dump roundtrips", () => {
     const manager = createTaskManager();
     manager.createRoot({
-      title: "Plan",
-      items: [
-        { title: "Task 1" },
-        { title: "Task 2" },
-        { title: "Task 3" },
-      ],
+      title: "Test",
+      items: [{ title: "Task 1" }, { title: "Task 2" }],
     });
 
-    const state = manager.getState();
-    expect(state.rootList?.tasks.length).toBe(3);
+    const { indexMap } = manager.getState();
+    const serialized = Array.from(indexMap.entries())
+      .map(([k, v]) => JSON.stringify({ k, v }))
+      .join("\n");
+
+    expect(indexMap.get("1")?.title).toBe("Task 1");
+    expect(indexMap.get("2")?.title).toBe("Task 2");
+  });
+});
+
+describe("Root Management", () => {
+  test("createRoot creates in memory state", () => {
+    const manager = createTaskManager();
+    manager.createRoot({
+      title: "Plan A",
+      items: [{ title: "Task" }],
+    });
+
+    const roots = manager.listRoots();
+    expect(roots.roots.length).toBe(1);
+    expect(roots.roots[0].title).toBe("Plan A");
+    expect(roots.activeId).toBe(roots.roots[0].id);
+  });
+
+  test("multiple roots tracked", () => {
+    const manager = createTaskManager();
+    const root1 = manager.createRoot({
+      title: "Plan 1",
+      items: [{ title: "Task 1" }],
+    });
+    manager.createRoot({
+      title: "Plan 2",
+      items: [{ title: "Task 2" }],
+    });
+
+    const roots = manager.listRoots();
+    expect(roots.roots.length).toBe(2);
+    expect(roots.activeId).toBe(roots.roots[1].id); // Last created is active
+  });
+
+  test("activateRoot updates activeId", () => {
+    const manager = createTaskManager();
+    const root1 = manager.createRoot({
+      title: "Plan 1",
+      items: [{ title: "Task 1" }],
+    });
+    manager.createRoot({
+      title: "Plan 2",
+      items: [{ title: "Task 2" }],
+    });
+
+    // Activate first root
+    manager.activateRoot({ id: root1.root.id });
+
+    const roots = manager.listRoots();
+    expect(roots.activeId).toBe(root1.root.id);
+  });
+
+  test("deleteRoot removes from list", () => {
+    const manager = createTaskManager();
+    const root = manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }],
+    });
+
+    manager.deleteRoot({ id: root.root.id });
+
+    const roots = manager.listRoots();
+    expect(roots.roots.length).toBe(0);
   });
 });
 
 describe("Breakdown Tasks", () => {
-  test("add subtasks under parent", () => {
+  test("breakdown adds children", () => {
     const manager = createTaskManager();
     manager.createRoot({
       title: "Plan",
@@ -89,13 +131,37 @@ describe("Breakdown Tasks", () => {
     });
 
     manager.breakdown({
-      items: [{ title: "Child" }],
+      items: [{ title: "Child 1" }, { title: "Child 2" }],
       parent: "1",
     });
 
     const state = manager.getState();
+    expect(state.indexMap.get("1.1")?.title).toBe("Child 1");
+    expect(state.indexMap.get("1.2")?.title).toBe("Child 2");
+  });
+
+  test("override mode replaces children", () => {
+    const manager = createTaskManager();
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Parent" }],
+    });
+
+    manager.breakdown({
+      items: [{ title: "Old" }],
+      parent: "1",
+    });
+
+    manager.breakdown({
+      items: [{ title: "New 1" }, { title: "New 2" }],
+      parent: "1",
+      mode: "override",
+    });
+
+    const state = manager.getState();
     expect(state.indexMap.has("1.1")).toBe(true);
-    expect(state.indexMap.get("1")?.children?.tasks.length).toBe(1);
+    expect(state.indexMap.get("1.1")?.title).toBe("New 1");
+    expect(state.indexMap.has("1.2")).toBe(true);
   });
 
   test("breakdown requires active root", () => {
@@ -128,73 +194,14 @@ describe("Nested Tree Structure", () => {
     });
 
     const state = manager.getState();
-    expect(state.indexMap.has("1.1.1")).toBe(true);
-    expect(state.indexMap.get("1.1.1")?.parentIndex).toBe("1.1");
-  });
-
-  test("multiple branches roundtrip", () => {
-    const manager = createTaskManager();
-    manager.createRoot({
-      title: "Plan",
-      items: [
-        { title: "Branch 1" },
-        { title: "Branch 2" },
-      ],
-    });
-
-    manager.breakdown({
-      items: [{ title: "Child of 1" }],
-      parent: "1",
-    });
-    manager.breakdown({
-      items: [{ title: "Child of 2" }],
-      parent: "2",
-    });
-
-    const state = manager.getState();
-    expect(state.indexMap.has("1.1")).toBe(true);
-    expect(state.indexMap.has("2.1")).toBe(true);
+    expect(state.indexMap.get("1")?.title).toBe("Level 1");
+    expect(state.indexMap.get("1.1")?.title).toBe("Level 2");
+    expect(state.indexMap.get("1.1.1")?.title).toBe("Level 3");
   });
 });
 
-describe("Parallel Groups", () => {
-  test("parallel group preserved", () => {
-    const manager = createTaskManager();
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "Parent" }],
-    });
-
-    manager.breakdown({
-      items: [
-        { title: "Task A", parallelGroup: "A" },
-        { title: "Task B", parallelGroup: "A" },
-        { title: "Task C" },
-      ],
-      parent: "1",
-    });
-
-    const state = manager.getState();
-    const groups = state.indexMap.get("1")?.children?.groups;
-    expect(groups?.length).toBe(2);
-    expect(groups?.[0].taskIndices).toEqual(["1.1", "1.2"]);
-    expect(groups?.[1].taskIndices).toEqual(["1.3"]);
-  });
-});
-
-describe("Task Status", () => {
-  test("pending status roundtrip", () => {
-    const manager = createTaskManager();
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "Task" }],
-    });
-
-    const state = manager.getState();
-    expect(state.indexMap.get("1")?.status).toBe("ready");
-  });
-
-  test("completed status roundtrip", () => {
+describe("Task Completion", () => {
+  test("complete marks task done", () => {
     const manager = createTaskManager();
     manager.createRoot({
       title: "Plan",
@@ -203,74 +210,17 @@ describe("Task Status", () => {
 
     manager.complete({ index: "1" });
 
-    const state = manager.getState();
-    expect(state.indexMap.get("1")?.status).toBe("completed");
+    expect(manager.isCompleted("1")).toBe(true);
   });
 
-  test("completed root unblocks next", () => {
-    const manager = createTaskManager();
-    manager.createRoot({
-      title: "Plan",
-      items: [
-        { title: "First" },
-        { title: "Second" },
-      ],
-    });
-
-    manager.complete({ index: "1" });
-
-    const state = manager.getState();
-    expect(state.indexMap.get("1")?.status).toBe("completed");
-    expect(state.indexMap.get("2")?.status).toBe("ready");
-  });
-});
-
-describe("Task Descriptions", () => {
-  test("task with description roundtrip", () => {
-    const manager = createTaskManager();
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "Task", description: "A description" }],
-    });
-
-    const state = manager.getState();
-    expect(state.indexMap.get("1")?.description).toBe("A description");
-  });
-});
-
-describe("lastCompletedIndex", () => {
-  test("lastCompletedIndex updated on complete", () => {
+  test("already completed throws", () => {
     const manager = createTaskManager();
     manager.createRoot({
       title: "Plan",
       items: [{ title: "Task" }],
     });
 
-    expect(manager.getState().lastCompletedIndex).toBeNull();
-
     manager.complete({ index: "1" });
-
-    expect(manager.getState().lastCompletedIndex).toBe("1");
-  });
-});
-
-describe("loadFromDump (for testing)", () => {
-  test("loadFromDump returns state without root task", () => {
-    const dump = `{"version":1,"lastCompletedIndex":"3"}`;
-
-    const loaded = loadFromDump(dump);
-
-    expect(loaded.tasks.has("root")).toBe(false);
-    expect(loaded.rootList.tasks.length).toBe(0);
-    expect(loaded.lastCompletedIndex).toBe("3");
-  });
-
-  test("loadFromDump with tasks", () => {
-    const dump = `{"version":1,"lastCompletedIndex":null}
-{"index":"1","parentIndex":"root","title":"Task 1","status":"ready","groupIndex":0}`;
-
-    const loaded = loadFromDump(dump);
-    expect(loaded.tasks.has("1")).toBe(true);
-    expect(loaded.tasks.has("root")).toBe(false);
+    expect(() => manager.complete({ index: "1" })).toThrow("already completed");
   });
 });

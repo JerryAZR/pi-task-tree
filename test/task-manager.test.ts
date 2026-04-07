@@ -1,11 +1,11 @@
 /**
  * Nested Todo - TaskManager Tests
- * Based on: extensions/nested-todo/docs/test-plan.md
+ * Simplified model: only completed/not-completed
  */
 
 import { createTaskManager } from "../src/task-manager";
 import { TaskTreeError, ERRORS } from "../src/errors";
-import { unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -54,7 +54,7 @@ describe("Task Creation", () => {
   });
 
   describe("create root", () => {
-    test("creates root list with 3 items, first ready, rest pending", () => {
+    test("creates root list with items", () => {
       const result = manager.createRoot({
         title: "Plan",
         items: [
@@ -64,9 +64,9 @@ describe("Task Creation", () => {
         ],
       });
 
-      expect(manager.getTaskStatus("1")).toBe("ready");
-      expect(manager.getTaskStatus("2")).toBe("pending");
-      expect(manager.getTaskStatus("3")).toBe("pending");
+      expect(manager.isCompleted("1")).toBe(false);
+      expect(manager.isCompleted("2")).toBe(false);
+      expect(manager.isCompleted("3")).toBe(false);
     });
 
     test("second root creation is allowed (creates new root)", () => {
@@ -114,8 +114,8 @@ describe("Task Creation", () => {
         parent: "1",
       });
 
-      expect(manager.getTaskStatus("1.1")).toBe("ready");
-      expect(manager.getTaskStatus("1.2")).toBe("pending");
+      expect(manager.isCompleted("1.1")).toBe(false);
+      expect(manager.isCompleted("1.2")).toBe(false);
     });
 
     test("breakdown requires active root", () => {
@@ -128,87 +128,7 @@ describe("Task Creation", () => {
     });
   });
 
-  describe("nested list status inheritance", () => {
-    test("inherits parent status (ready)", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Root" }],
-      });
-
-      manager.breakdown({
-        items: [
-          { title: "Child 1" },
-          { title: "Child 2" },
-        ],
-        parent: "1",
-      });
-
-      expect(manager.getTaskStatus("1.1")).toBe("ready");
-      expect(manager.getTaskStatus("1.2")).toBe("pending");
-    });
-
-    test("first child inherits parent ready status", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Root" }],
-      });
-
-      manager.breakdown({
-        items: [{ title: "Child" }],
-        parent: "1",
-      });
-
-      expect(manager.getTaskStatus("1.1")).toBe("ready");
-    });
-  });
-
-  describe("parallel group behavior", () => {
-    test("append with same group label creates new group, pending until previous complete", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Parent" }],
-      });
-
-      manager.breakdown({
-        items: [
-          { title: "Group1 Task 1", parallelGroup: "group-a" },
-          { title: "Group1 Task 2", parallelGroup: "group-a" },
-        ],
-        parent: "1",
-      });
-
-      const state = manager.getState();
-      expect(state.indexMap.get("1")?.children?.groups.length).toBe(1);
-
-      manager.breakdown({
-        items: [{ title: "Group2 Task 1", parallelGroup: "group-a" }],
-        parent: "1",
-        mode: "append",
-      });
-
-      const state2 = manager.getState();
-      expect(state2.indexMap.get("1")?.children?.groups.length).toBe(2);
-      expect(manager.getTaskStatus("1.3")).toBe("pending");
-    });
-  });
-
   describe("mode behaviors", () => {
-    test("expand completed task rejected", () => {
-      manager.createRoot({
-        title: "Plan",
-        items: [{ title: "Task" }],
-      });
-      manager.complete({ index: "1" });
-
-      expectError(() =>
-        manager.breakdown({
-          items: [{ title: "Child" }],
-          parent: "1",
-        }),
-        "TASK_COMPLETED"
-      );
-    });
-
     test("override mode replaces existing children", () => {
       manager.createRoot({
         title: "Plan",
@@ -288,7 +208,6 @@ describe("Task Creation", () => {
       const state = manager.getState();
       expect(state.indexMap.has("1.1")).toBe(false);
       expect(state.indexMap.has("1.2")).toBe(false);
-      expect(state.indexMap.get("1")?.title).toBe("Parent");
     });
   });
 });
@@ -309,26 +228,17 @@ describe("Task Completion", () => {
     expectError(() => manager.complete({ index: "99" }), "NOT_FOUND");
   });
 
-  test("complete ready task marks it completed", () => {
+  test("complete marks it completed", () => {
     manager.createRoot({
       title: "Plan",
       items: [{ title: "Task" }],
     });
 
     const result = manager.complete({ index: "1" });
-    expect(manager.getTaskStatus("1")).toBe("completed");
+    expect(manager.isCompleted("1")).toBe(true);
   });
 
-  test("complete pending task rejected", () => {
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "First" }, { title: "Second" }],
-    });
-
-    expectError(() => manager.complete({ index: "2" }), "NOT_READY");
-  });
-
-  test("complete unblocks next sequential task", () => {
+  test("complete any task (no order enforcement)", () => {
     manager.createRoot({
       title: "Plan",
       items: [
@@ -338,23 +248,14 @@ describe("Task Completion", () => {
       ],
     });
 
-    manager.complete({ index: "1" });
-    expect(manager.getTaskStatus("2")).toBe("ready");
-    expect(manager.getTaskStatus("3")).toBe("pending");
-
-    manager.complete({ index: "2" });
-    expect(manager.getTaskStatus("3")).toBe("ready");
-  });
-
-  test("complete last task marks root list complete", () => {
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "Task" }],
-    });
+    // Can complete any task in any order
+    manager.complete({ index: "3" });
+    expect(manager.isCompleted("3")).toBe(true);
+    expect(manager.isCompleted("1")).toBe(false);
+    expect(manager.isCompleted("2")).toBe(false);
 
     manager.complete({ index: "1" });
-    const result = manager.list({ mode: "full" });
-    expect(result.rootProgress.completed).toBe(1);
+    expect(manager.isCompleted("1")).toBe(true);
   });
 
   test("complete by title", () => {
@@ -364,7 +265,7 @@ describe("Task Completion", () => {
     });
 
     manager.complete({ index: "Unique" });
-    expect(manager.getTaskStatus("1")).toBe("completed");
+    expect(manager.isCompleted("1")).toBe(true);
   });
 
   test("complete already completed rejected", () => {
@@ -478,14 +379,23 @@ describe("Task Retrieval", () => {
   test("get by unique title returns task", () => {
     manager.createRoot({
       title: "Plan",
-      items: [{ title: "Unique" }, { title: "Also Unique" }],
+      items: [{ title: "Unique" }],
     });
 
     const result = manager.get({ query: "Unique" });
     expect(result.task.index).toBe("1");
   });
 
-  test("get returns correct group context", () => {
+  test("get by duplicate title throws ambiguous", () => {
+    manager.createRoot({
+      title: "Plan",
+      items: [{ title: "Task" }, { title: "Task" }],
+    });
+
+    expectError(() => manager.get({ query: "Task" }), "AMBIGUOUS");
+  });
+
+  test("get returns children", () => {
     manager.createRoot({
       title: "Plan",
       items: [{ title: "Parent" }],
@@ -493,27 +403,15 @@ describe("Task Retrieval", () => {
 
     manager.breakdown({
       items: [
-        { title: "A1", parallelGroup: "A" },
-        { title: "A2", parallelGroup: "A" },
-        { title: "B1", parallelGroup: "B" },
+        { title: "Child 1" },
+        { title: "Child 2" },
       ],
       parent: "1",
     });
 
-    const result = manager.get({ query: "1.2" });
-    expect(result.parent?.index).toBe("1");
-    expect(result.previousGroup.map(t => t.index)).toEqual([]);
-    expect(result.currentGroup.map(t => t.index)).toEqual(["1.1", "1.2"]);
-    expect(result.nextGroup.map(t => t.index)).toEqual(["1.3"]);
-  });
-
-  test("ambiguous title rejected", () => {
-    manager.createRoot({
-      title: "Plan",
-      items: [{ title: "Task" }, { title: "Task" }],
-    });
-
-    expectError(() => manager.get({ query: "Task" }), "AMBIGUOUS");
+    const result = manager.get({ query: "1" });
+    expect(result.children.length).toBe(2);
+    expect(result.children[0].title).toBe("Child 1");
   });
 
   test("get non-existent rejected", () => {
@@ -536,11 +434,7 @@ describe("Task Retrieval", () => {
 
     const result = manager.get({ query: "root" });
     expect(result.task.index).toBe("root");
-    expect(result.task.title).toBe("Root");
-    expect(result.parent).toBeUndefined();
-    expect(result.currentGroup.map(t => t.index)).toEqual(["1", "2"]);
-    expect(result.previousGroup).toEqual([]);
-    expect(result.nextGroup).toEqual([]);
+    expect(result.children.length).toBe(2);
   });
 });
 

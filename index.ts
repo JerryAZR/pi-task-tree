@@ -1,15 +1,6 @@
 /**
- * Task Tree Extension - Nested task list with parallel groups and focus mode
- *
- * Features:
- * - task_create_root: Create a new named task list (root)
- * - task_breakdown: Add tasks under an existing parent
- * - task_update: Update task title/description
- * - task_complete: Mark task completed (with unblocking logic)
- * - task_list: List tasks in focus or full mode
- * - task_get: Query task details with group context
- *
- * State is persisted to .pi/task_tree/ in the project directory.
+ * Task Tree Extension - Nested task list with completed tracking
+ * Simplified model: only completed/not-completed, no sequential blocking
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -17,18 +8,13 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 
 import { createTaskManager, type TaskManager } from "./src/task-manager";
-import type {
-  Task,
-} from "./src/types";
+import type { Task } from "./src/types";
 import { TaskTreeError } from "./src/errors";
 
 // TypeBox schemas for LLM parameters
 const CreateListItemSchema = Type.Object({
   title: Type.String({ description: "Short task title" }),
   description: Type.Optional(Type.String({ description: "Detailed task description" })),
-  parallelGroup: Type.Optional(Type.String({
-    description: "Tag for parallel execution - tasks with the same tag can be worked on simultaneously. Sequential tasks have no tag (default)."
-  })),
 });
 
 const TaskCreateRootParams = Type.Object({
@@ -60,34 +46,30 @@ const TaskCompleteParams = Type.Object({
 });
 
 const TaskListParams = Type.Object({
-  mode: Type.Optional(StringEnum(["focus", "full"] as const, { description: "List mode: focus (default, shows recent work) or full (shows all tasks)" })),
+  mode: Type.Optional(StringEnum(["focus", "full"] as const, { description: "List mode: focus (default, shows incomplete) or full (shows all)" })),
 });
 
 // ============================================================================
-// Response formatting (LLM-friendly plain text)
+// Response formatting
 // ============================================================================
 
 function formatTaskBrief(task: Task): string {
-  const statusIcon = task.status === "completed" ? "[x]" : task.status === "ready" ? "[ ]" : "[...]";
-  const group = task.groupIndex >= 0 ? ` group:${task.groupIndex}` : "";
-  return `${task.index} ${statusIcon} ${task.title}${group}`;
+  const statusIcon = task.completed ? "[x]" : "[ ]";
+  return `${task.index} ${statusIcon} ${task.title}`;
 }
 
 function formatTaskDetail(task: Task, indent = ""): string {
   const lines: string[] = [];
   lines.push(`${indent}index:    ${task.index}`);
   lines.push(`${indent}title:    ${task.title}`);
-  lines.push(`${indent}status:   ${task.status}`);
+  lines.push(`${indent}status:   ${task.completed ? "completed" : "pending"}`);
   if (task.description) {
     lines.push(`${indent}desc:     ${task.description}`);
-  }
-  if (task.groupLabel) {
-    lines.push(`${indent}group:    ${task.groupLabel} (position ${task.groupIndex})`);
   }
   return lines.join("\n");
 }
 
-function formatListResult(result: { tree: Task[]; rootProgress: { completed: number; total: number } }, showChildren = true): string {
+function formatListResult(result: { tree: Task[]; rootProgress: { completed: number; total: number } }): string {
   const lines: string[] = [];
   lines.push(`Tasks: ${result.rootProgress.completed}/${result.rootProgress.total} completed`);
   lines.push("");
@@ -101,7 +83,7 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
     const indent = "  ".repeat(depth);
     lines.push(`${indent}${formatTaskBrief(t)}`);
 
-    if (showChildren && t.children && t.children.tasks.length > 0) {
+    if (t.children && t.children.tasks.length > 0) {
       for (const child of t.children.tasks) {
         formatTask(child, depth + 1);
       }
@@ -115,7 +97,7 @@ function formatListResult(result: { tree: Task[]; rootProgress: { completed: num
   return lines.join("\n");
 }
 
-function formatGetResult(result: { task: Task; parent?: Task; previousGroup: Task[]; currentGroup: Task[]; nextGroup: Task[] }): string {
+function formatGetResult(result: { task: Task; parent?: Task; children: Task[] }): string {
   const lines: string[] = [];
 
   lines.push("Task:");
@@ -127,27 +109,11 @@ function formatGetResult(result: { task: Task; parent?: Task; previousGroup: Tas
     lines.push(formatTaskDetail(result.parent, "  "));
   }
 
-  if (result.previousGroup.length > 0) {
+  if (result.children.length > 0) {
     lines.push("");
-    lines.push("Previous group:");
-    for (const t of result.previousGroup) {
-      lines.push(`  ${formatTaskBrief(t)}`);
-    }
-  }
-
-  if (result.currentGroup.length > 0) {
-    lines.push("");
-    lines.push("Current group:");
-    for (const t of result.currentGroup) {
-      lines.push(`  ${formatTaskBrief(t)}`);
-    }
-  }
-
-  if (result.nextGroup.length > 0) {
-    lines.push("");
-    lines.push("Next group:");
-    for (const t of result.nextGroup) {
-      lines.push(`  ${formatTaskBrief(t)}`);
+    lines.push("Children:");
+    for (const child of result.children) {
+      lines.push(`  ${formatTaskBrief(child)}`);
     }
   }
 
@@ -220,10 +186,9 @@ export default function (pi: ExtensionAPI) {
         const result = m.createRoot({
           title: p.title.trim(),
           description: typeof p.description === "string" ? p.description.trim() : undefined,
-          items: p.items as { title: string; description?: string; parallelGroup?: string }[],
+          items: p.items as { title: string; description?: string }[],
         });
 
-        // Get the full list result to show tasks
         const listResult = m.list({ mode: "full" });
         const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: listResult.tree, rootProgress: result.rootProgress })}`;
         return { content: [{ type: "text", text }] };
@@ -260,7 +225,7 @@ export default function (pi: ExtensionAPI) {
         
         const count = p.items.length;
         const result = getManager().breakdown({
-          items: p.items as { title: string; description?: string; parallelGroup?: string }[],
+          items: p.items as { title: string; description?: string }[],
           parent: p.parent.trim(),
           mode: p.mode as "new" | "append" | "override" | undefined,
         });
@@ -313,7 +278,6 @@ export default function (pi: ExtensionAPI) {
       try {
         const p = params as { index?: unknown; title?: unknown; description?: unknown };
         const index = normalizeIndexOrTitle(p.index);
-        // Handle null from JSON or string "null"/"undefined"
         let description: string | undefined;
         if (p.description === null || p.description === 'null' || p.description === 'undefined') {
           description = undefined;
@@ -343,7 +307,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const index = normalizeIndexOrTitle((params as { index?: unknown }).index);
         const result = getManager().complete({ index });
-        const text = `Completed ${index}\n\n${formatListResult(result, false)}`;
+        const text = `Completed ${index}\n\n${formatListResult(result)}`;
         return { content: [{ type: "text", text }] };
       } catch (error) {
         return handleError(error);
@@ -355,12 +319,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_list",
     label: "Task List",
-    description: "Show an overview of recent tasks or all tasks",
+    description: "Show incomplete tasks or all tasks",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
       "Use this tool to understand the progress made in this project",
-      "Use 'focus' mode to view the recently completed or unblocked tasks",
-      "Use 'full' mode to view the complete tree of all planned tasks"
+      "Use 'focus' mode (default) to view incomplete tasks",
+      "Use 'full' mode to view all tasks including completed"
     ],
     parameters: TaskListParams,
 
