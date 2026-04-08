@@ -24,6 +24,12 @@
   },
   "keywords": ["pi-package", "pi", "task", "tree", "nested", "todo"],
   "license": "MIT",
+  "files": [
+    "index.ts",
+    "src/**/*.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/JerryAZR/pi-task-tree"

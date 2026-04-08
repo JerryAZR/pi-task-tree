@@ -25,9 +25,9 @@ Or add to `~/.pi/agent/settings.json`:
 - **Soft delete**: Tasks can be deleted without losing context
 - **Persistence**: State survives restarts
 
-## Usage
+## Agent Tools
 
-Once installed, the following tools are available:
+The agent can use these tools to manage tasks:
 
 - `task_create_root` - Create a new task list
 - `task_extend_root` - Add tasks to root level
@@ -36,6 +36,18 @@ Once installed, the following tools are available:
 - `task_close` - Mark tasks complete or delete them
 - `task_list` - Show tasks in focus or full mode
 - `task_get` - Get details about a specific task
+
+## Human Commands
+
+You can also manage tasks directly with slash commands:
+
+| Command | Description |
+|---------|-------------|
+| `/plans` | Show current plan (focus mode) |
+| `/plans list` | List all available plans |
+| `/plans switch <id>` | Switch to a different plan |
+| `/plans delete <id>` | Delete a plan (with confirmation) |
+| `/plans help` | Show command help |
 
 ## Development
 
