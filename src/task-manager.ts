@@ -265,9 +265,12 @@ function findTaskByTitle(tasks: Map<string, Task>, title: string): Task {
 }
 
 // WHAT: Generate unique root ID
-// WHY: Timestamp-based is simple and sufficient (creation is infrequent)
+// WHY: Hex with dashes for readability while maintaining uniqueness
 function generateRootId(): string {
-  return String(Date.now());
+  const timestamp = Date.now().toString(16);
+  // Split into groups of 4 for readability: 19d7-a3f1-a15
+  const groups = timestamp.match(/.{1,4}/g) ?? [timestamp];
+  return groups.join("-");
 }
 
 // WHAT: Create synthetic root task
