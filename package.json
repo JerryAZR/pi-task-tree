@@ -1,7 +1,7 @@
 {
   "name": "pi-task-tree",
   "version": "0.1.0",
-  "description": "Nested task list with parallel groups and focus mode for pi",
+  "description": "Nested task list with completed tracking and focus mode for pi",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
@@ -23,6 +23,14 @@
     "moduleFileExtensions": ["ts", "js"],
     "collectCoverageFrom": ["src/**/*.ts"]
   },
-  "keywords": ["pi", "task", "tree", "nested", "todo"],
-  "license": "MIT"
+  "keywords": ["pi-package", "pi", "task", "tree", "nested", "todo"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
 }
