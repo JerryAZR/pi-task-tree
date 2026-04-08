@@ -2,7 +2,7 @@
 
 Nested task list with completed tracking and focus mode for pi.
 
-## Installation
+> ⚠️ **Early Stage Development**: This extension is in active development. Expect bugs and breaking changes. Specifically, **data loss of created plans may occur** as the internal format evolves. Use with caution and back up important plans.
 
 ```bash
 pi install npm:@jerryan/pi-task-tree
@@ -40,11 +40,20 @@ Once installed, the following tools are available:
 ## Development
 
 ```bash
+# Install dependencies
+npm install
+
 # Run tests
 npm test
 
 # Watch mode
 npm run test:watch
+
+# Build
+npm run build
+
+# Type check
+npm run lint
 ```
 
 ## License
