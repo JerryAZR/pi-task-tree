@@ -267,8 +267,8 @@ function findTaskByTitle(tasks: Map<string, Task>, title: string): Task {
 // WHAT: Generate unique root ID
 // WHY: 48-bit timestamp in hex, always 12 chars, grouped for readability
 function generateRootId(): string {
-  // Keep low 48 bits for consistent length
-  const timestamp48 = Date.now() & 0xFFFFFFFFFFFF;
+  // Keep low 48 bits for consistent length (use modulo, not bitwise - JS truncates to 32 bits)
+  const timestamp48 = Date.now() % 0x1000000000000;
   // Pad to 12 hex chars, then group: XXXX-XXXX-XXXX
   const hex = timestamp48.toString(16).padStart(12, "0");
   return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
