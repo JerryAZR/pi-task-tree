@@ -505,4 +505,26 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
+
+  // ============================================================================
+  // User-facing commands
+  // ============================================================================
+
+  pi.registerCommand("tasks", {
+    description: "Show task list (focus mode by default, use --full for all tasks)",
+    handler: async (args, ctx) => {
+      const mode = args.includes("--full") ? "full" : "focus";
+      try {
+        const m = getManager();
+        const result = m.list({ mode });
+        const output = formatListResult(result);
+        ctx.ui.notify(output, "info");
+      } catch (error) {
+        const message = error instanceof TaskTreeError
+          ? error.message
+          : error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Error: ${message}`, "error");
+      }
+    },
+  });
 }
