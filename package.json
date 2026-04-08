@@ -2,8 +2,7 @@
   "name": "pi-task-tree",
   "version": "0.1.0",
   "description": "Nested task list with completed tracking and focus mode for pi",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "index.ts",
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
@@ -25,6 +24,13 @@
   },
   "keywords": ["pi-package", "pi", "task", "tree", "nested", "todo"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lrzx/pi-task-tree"
+  },
+  "bugs": {
+    "url": "https://github.com/lrzx/pi-task-tree/issues"
+  },
   "pi": {
     "extensions": ["./index.ts"]
   },

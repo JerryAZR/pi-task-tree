@@ -3,11 +3,11 @@
  * Model: completed/deleted flags, parent completion rules, [⏳] derived display
  */
 
-import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
-import { createTaskManager, type TaskManager } from "./src/task-manager";
+import { createTaskManager } from "./src/task-manager";
+import type { TaskManager } from "./src/types";
 import { ROOT_INDEX } from "./src/types";
 import type { Task, DisplayState } from "./src/types";
 import { TaskTreeError } from "./src/errors";
@@ -27,17 +27,22 @@ const TaskCreateRootParams = Type.Object({
 const TaskBreakdownParams = Type.Object({
   items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
   parent: Type.String({ description: "Parent task index to add subtasks under (e.g., '1' or '1.2')" }),
-  mode: Type.Optional(StringEnum(["new", "append", "override", "insert"] as const, {
-    description: "new: fails if children exist. append: adds to end. override: replaces. insert: inserts before 'before'."
-  })),
+  mode: Type.Optional(Type.Union([
+    Type.Literal("new"),
+    Type.Literal("append"),
+    Type.Literal("override"),
+    Type.Literal("insert"),
+  ], { description: "new: fails if children exist. append: adds to end. override: replaces. insert: inserts before 'before'." })),
   before: Type.Optional(Type.String({ description: "For insert mode: task index to insert before" })),
 });
 
 const TaskAddTaskParams = Type.Object({
   items: Type.Array(CreateListItemSchema, { description: "Tasks to add" }),
-  mode: Type.Optional(StringEnum(["append", "override", "insert"] as const, {
-    description: "append: adds to end. override: replaces. insert: inserts before 'before'."
-  })),
+  mode: Type.Optional(Type.Union([
+    Type.Literal("append"),
+    Type.Literal("override"),
+    Type.Literal("insert"),
+  ], { description: "append: adds to end. override: replaces. insert: inserts before 'before'." })),
   before: Type.Optional(Type.String({ description: "For insert mode: task index to insert before" })),
 });
 
@@ -53,11 +58,17 @@ const TaskUpdateParams = Type.Object({
 
 const TaskCloseParams = Type.Object({
   indexOrTitle: Type.String({ description: "Task index or title to close" }),
-  mode: StringEnum(["complete", "delete"] as const, { description: "complete: marks task done (fails if has incomplete children). delete: soft-deletes task and removes children." }),
+  mode: Type.Union([
+    Type.Literal("complete"),
+    Type.Literal("delete"),
+  ], { description: "complete: marks task done (fails if has incomplete children). delete: soft-deletes task and removes children." }),
 });
 
 const TaskListParams = Type.Object({
-  mode: Type.Optional(StringEnum(["focus", "full"] as const, { description: "focus (default): shows working path. full: shows all." })),
+  mode: Type.Optional(Type.Union([
+    Type.Literal("focus"),
+    Type.Literal("full"),
+  ], { description: "focus (default): shows working path. full: shows all." })),
 });
 
 // ============================================================================
@@ -223,10 +234,11 @@ export default function (pi: ExtensionAPI) {
     manager = createTaskManager();
   });
 
-  function handleError(error: unknown): { content: { type: "text"; text: string }[] } {
+  function handleError(error: unknown): { content: { type: "text"; text: string }[]; details: Record<string, never> } {
     if (error instanceof TaskTreeError) {
       return {
         content: [{ type: "text", text: `Error: ${error.code} - ${error.message}` }],
+        details: {},
       };
     }
     throw error;
@@ -273,7 +285,7 @@ export default function (pi: ExtensionAPI) {
 
         // Use tree from result (focused on first task) instead of full list
         const text = `Created task list: ${result.root.title}\n\n${formatListResult({ tree: result.tree, rootProgress: result.rootProgress })}`;
-        return { content: [{ type: "text", text }] };
+        return { content: [{ type: "text", text }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -311,7 +323,7 @@ export default function (pi: ExtensionAPI) {
           ? `Added 1 task`
           : `Added ${count} tasks`;
 
-        return { content: [{ type: "text", text }] };
+        return { content: [{ type: "text", text }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -354,7 +366,7 @@ export default function (pi: ExtensionAPI) {
           ? `Added 1 task under ${p.parent}`
           : `Added ${count} tasks under ${p.parent}`;
 
-        return { content: [{ type: "text", text }] };
+        return { content: [{ type: "text", text }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -376,7 +388,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const query = normalizeIndexOrTitle((params as { indexOrTitle?: unknown }).indexOrTitle);
         const result = getManager().get({ query });
-        return { content: [{ type: "text", text: formatGetResult(result) }] };
+        return { content: [{ type: "text", text: formatGetResult(result) }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -405,7 +417,7 @@ export default function (pi: ExtensionAPI) {
           ? (p.newDescription === '' ? undefined : p.newDescription)
           : undefined;
         const result = getManager().update({ index, title: p.newTitle as string | undefined, description });
-        return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }] };
+        return { content: [{ type: "text", text: `Updated ${result.task.index}: ${result.task.title}` }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -452,7 +464,7 @@ export default function (pi: ExtensionAPI) {
           if (task && task.parentIndex !== ROOT_INDEX) {
             const parent = getManager().getState().indexMap.get(task.parentIndex);
             if (parent && parent.children) {
-              const pendingCount = parent.children.tasks.filter(t => !t.completed && !t.deleted).length;
+              const pendingCount = parent.children.tasks.filter((t: Task) => !t.completed && !t.deleted).length;
               if (pendingCount === 0 && !parent.completed && !parent.deleted) {
                 text += `\n\n💡 All children of "${parent.index}" are done. Review and close the parent task.`;
               }
@@ -460,7 +472,7 @@ export default function (pi: ExtensionAPI) {
           }
         }
 
-        return { content: [{ type: "text", text: `${text}\n\n${formatListResult(result)}` }] };
+        return { content: [{ type: "text", text: `${text}\n\n${formatListResult(result)}` }], details: {} };
       } catch (error) {
         return handleError(error);
       }
@@ -487,7 +499,7 @@ export default function (pi: ExtensionAPI) {
         const result = m.list({
           mode: p?.mode as "focus" | "full" | undefined
         });
-        return { content: [{ type: "text", text: formatListResult(result) }] };
+        return { content: [{ type: "text", text: formatListResult(result) }], details: {} };
       } catch (error) {
         return handleError(error);
       }
