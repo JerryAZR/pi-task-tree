@@ -26,10 +26,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lrzx/pi-task-tree"
+    "url": "https://github.com/JerryAZR/pi-task-tree"
   },
   "bugs": {
-    "url": "https://github.com/lrzx/pi-task-tree/issues"
+    "url": "https://github.com/JerryAZR/pi-task-tree/issues"
   },
   "pi": {
     "extensions": ["./index.ts"]
