@@ -5,6 +5,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { parseArgs } from "node:util";
 
 import { createTaskManager } from "./src/task-manager";
 import type { TaskManager } from "./src/types";
@@ -513,7 +514,38 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("tasks", {
     description: "Show task list (focus mode by default, use --full for all tasks)",
     handler: async (args, ctx) => {
-      const mode = args.includes("--full") ? "full" : "focus";
+      // Parse arguments
+      let values: { full?: boolean; help?: boolean };
+      try {
+        const parsed = parseArgs({
+          args: args.split(" ").filter(Boolean),
+          options: {
+            full: { type: "boolean", short: "f" },
+            help: { type: "boolean", short: "h" },
+          },
+          allowPositionals: false,
+        });
+        values = parsed.values;
+      } catch {
+        ctx.ui.notify(`Invalid arguments. Use /tasks --help for usage.`, "error");
+        return;
+      }
+
+      // Show help
+      if (values.help) {
+        ctx.ui.notify(
+          `Usage: /tasks [OPTIONS]\n\n` +
+          `Show the task list for the current project.\n\n` +
+          `Options:\n` +
+          `  -f, --full    Show all tasks (default: focus mode)\n` +
+          `  -h, --help    Show this help message`,
+          "info"
+        );
+        return;
+      }
+
+      // Execute command
+      const mode = values.full ? "full" : "focus";
       try {
         const m = getManager();
         const result = m.list({ mode });
