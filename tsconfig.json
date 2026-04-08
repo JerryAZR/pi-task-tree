@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "declaration": true,
     "strict": true,
     "noImplicitAny": true,
@@ -18,7 +18,8 @@
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
     "outDir": "./dist",
-    "rootDir": "./"
+    "rootDir": "./",
+    "skipLibCheck": true
   },
   "include": ["src/**/*", "index.ts"],
   "exclude": ["node_modules", "dist", "test"]
