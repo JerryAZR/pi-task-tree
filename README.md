@@ -5,14 +5,14 @@ Nested task list with completed tracking and focus mode for pi.
 ## Installation
 
 ```bash
-pi install npm:pi-task-tree
+pi install npm:@jerryan/pi-task-tree
 ```
 
 Or add to `~/.pi/agent/settings.json`:
 
 ```json
 {
-  "packages": ["npm:pi-task-tree"]
+  "packages": ["npm:@jerryan/pi-task-tree"]
 }
 ```
 
