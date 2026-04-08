@@ -560,95 +560,111 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Root management commands
-  pi.registerCommand("task-roots", {
-    description: "List all task roots and show active one",
-    handler: async (_args, ctx) => {
-      try {
-        const m = getManager();
-        const { roots, activeId } = m.listRoots();
-        if (roots.length === 0) {
-          ctx.ui.notify("No task lists found. Create one with /task-new", "info");
-          return;
+  // Plan management command (human-facing root management)
+  pi.registerCommand("plans", {
+    description: "Manage task plans: list, switch, delete (no args shows active plan)",
+    handler: async (args, ctx) => {
+      const m = getManager();
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      const subcommand = parts[0] || "show";
+
+      switch (subcommand) {
+        case "show":
+        case "status": {
+          // Show current plan
+          try {
+            const result = m.list({ mode: "focus" });
+            const output = formatListResult(result);
+            ctx.ui.notify(output, "info");
+          } catch (error) {
+            const message = error instanceof TaskTreeError
+              ? error.message
+              : error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Error: ${message}`, "error");
+          }
+          break;
         }
-        const lines = roots.map(r => {
-          const active = r.id === activeId ? " (active)" : "";
-          return `  ${r.id}: ${r.title}${active}`;
-        });
-        ctx.ui.notify(`Task lists:\n${lines.join("\n")}`, "info");
-      } catch (error) {
-        const message = error instanceof TaskTreeError
-          ? error.message
-          : error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Error: ${message}`, "error");
-      }
-    },
-  });
 
-  pi.registerCommand("task-switch", {
-    description: "Switch to a different task list by ID",
-    handler: async (args, ctx) => {
-      const id = args.trim();
-      if (!id) {
-        ctx.ui.notify("Usage: /task-switch <id>", "error");
-        return;
-      }
-      try {
-        const m = getManager();
-        m.activateRoot({ id });
-        ctx.ui.notify(`Switched to task list: ${id}`, "success");
-      } catch (error) {
-        const message = error instanceof TaskTreeError
-          ? error.message
-          : error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Error: ${message}`, "error");
-      }
-    },
-  });
-
-  pi.registerCommand("task-new", {
-    description: "Create a new task list with title",
-    handler: async (args, ctx) => {
-      const title = args.trim();
-      if (!title) {
-        ctx.ui.notify("Usage: /task-new <title>", "error");
-        return;
-      }
-      try {
-        const m = getManager();
-        const { root } = m.createRoot({ title, items: [] });
-        ctx.ui.notify(`Created task list: ${root.id} - ${root.title}`, "success");
-      } catch (error) {
-        const message = error instanceof TaskTreeError
-          ? error.message
-          : error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Error: ${message}`, "error");
-      }
-    },
-  });
-
-  pi.registerCommand("task-rm", {
-    description: "Delete a task list by ID",
-    handler: async (args, ctx) => {
-      const id = args.trim();
-      if (!id) {
-        ctx.ui.notify("Usage: /task-rm <id>", "error");
-        return;
-      }
-      try {
-        const m = getManager();
-        const ok = await ctx.ui.confirm("Delete task list?", `Delete ${id}? This cannot be undone.`);
-        if (!ok) {
-          ctx.ui.notify("Cancelled", "info");
-          return;
+        case "list":
+        case "ls": {
+          try {
+            const { roots, activeId } = m.listRoots();
+            if (roots.length === 0) {
+              ctx.ui.notify("No plans found. Ask the agent to create one.", "info");
+              return;
+            }
+            const lines = roots.map(r => {
+              const active = r.id === activeId ? " (active)" : "";
+              return `  ${r.id}: ${r.title}${active}`;
+            });
+            ctx.ui.notify(`Available plans:\n${lines.join("\n")}`, "info");
+          } catch (error) {
+            const message = error instanceof TaskTreeError
+              ? error.message
+              : error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Error: ${message}`, "error");
+          }
+          break;
         }
-        m.deleteRoot({ id });
-        ctx.ui.notify(`Deleted task list: ${id}`, "success");
-      } catch (error) {
-        const message = error instanceof TaskTreeError
-          ? error.message
-          : error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Error: ${message}`, "error");
+
+        case "switch":
+        case "use": {
+          const id = parts[1];
+          if (!id) {
+            ctx.ui.notify("Usage: /plans switch <id>", "error");
+            return;
+          }
+          try {
+            m.activateRoot({ id });
+            ctx.ui.notify(`Switched to plan: ${id}`, "success");
+          } catch (error) {
+            const message = error instanceof TaskTreeError
+              ? error.message
+              : error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Error: ${message}`, "error");
+          }
+          break;
+        }
+
+        case "delete":
+        case "rm": {
+          const id = parts[1];
+          if (!id) {
+            ctx.ui.notify("Usage: /plans delete <id>", "error");
+            return;
+          }
+          try {
+            const ok = await ctx.ui.confirm("Delete plan?", `Delete ${id}? This cannot be undone.`);
+            if (!ok) {
+              ctx.ui.notify("Cancelled", "info");
+              return;
+            }
+            m.deleteRoot({ id });
+            ctx.ui.notify(`Deleted plan: ${id}`, "success");
+          } catch (error) {
+            const message = error instanceof TaskTreeError
+              ? error.message
+              : error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Error: ${message}`, "error");
+          }
+          break;
+        }
+
+        case "help":
+        default: {
+          ctx.ui.notify(
+            `Usage: /plans [COMMAND] [ARGS]\n\n` +
+            `Commands:\n` +
+            `  (no args)     Show current plan (focus mode)\n` +
+            `  list, ls      List all available plans\n` +
+            `  switch <id>   Switch to a different plan\n` +
+            `  delete <id>   Delete a plan (with confirmation)\n` +
+            `  help          Show this help message\n\n` +
+            `To create a new plan, ask the agent to create one.`,
+            "info"
+          );
+          break;
+        }
       }
     },
   });
