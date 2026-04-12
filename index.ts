@@ -432,7 +432,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_close",
     label: "Task Close",
-    description: "Close a task by completing or deleting it. Completed tasks are locked and cannot be modified.",
+    description: "Close a task by completing or deleting it. Cannot complete tasks with incomplete children. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
       "Use task_close immediately after finishing work on a task",
