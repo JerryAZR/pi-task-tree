@@ -488,7 +488,7 @@ export default function (pi: ExtensionAPI) {
     description: "Show tasks in focus (default) or full mode. Focus shows working path, full shows all.",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
-      "Use task_list to check current progress before starting work",
+      "Use task_list when unsure about the current plan state",
     ],
     parameters: TaskListParams,
 
