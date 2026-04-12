@@ -23,7 +23,7 @@
     "collectCoverageFrom": ["src/**/*.ts"]
   },
   "keywords": ["pi-package", "pi", "task", "tree", "nested", "todo"],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "files": [
     "index.ts",
     "src/**/*.ts",
