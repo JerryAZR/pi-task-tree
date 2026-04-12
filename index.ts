@@ -267,7 +267,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Create a new task list for planning",
     promptGuidelines: [
       "Use task_create_root when starting new work or creating a new plan",
-      "Use task_create_root when there is no active plan to continue",
+      "Do not use task_create_root when an active plan exists to continue",
     ],
     parameters: TaskCreateRootParams,
 
@@ -307,7 +307,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Add tasks to an existing plan",
     promptGuidelines: [
       "Use task_extend_root only when actively continuing an existing plan",
-      "Use task_extend_root only when there is already an active plan to extend",
+      "Do not use task_extend_root when starting new work",
     ],
     parameters: TaskAddTaskParams,
 
