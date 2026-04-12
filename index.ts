@@ -267,7 +267,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Create a new task list for planning",
     promptGuidelines: [
       "Use task_create_root when starting new work or creating a new plan",
-      "Prefer task_create_root over task_extend_root unless actively continuing an existing plan",
+      "Use task_create_root when there is no active plan to continue",
     ],
     parameters: TaskCreateRootParams,
 
@@ -307,7 +307,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Add tasks to an existing plan",
     promptGuidelines: [
       "Use task_extend_root only when actively continuing an existing plan",
-      "Do not use task_extend_root for new work - use task_create_root instead",
+      "Use task_extend_root only when there is already an active plan to extend",
     ],
     parameters: TaskAddTaskParams,
 
@@ -344,7 +344,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Break down tasks into subtasks",
     promptGuidelines: [
       "Use task_breakdown when decomposing a specific task into subtasks",
-      "Use task_breakdown instead of task_extend_root when adding children to an existing task",
+      "Use task_breakdown when adding children to an existing parent task",
     ],
     parameters: TaskBreakdownParams,
 
@@ -432,12 +432,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "task_close",
     label: "Task Close",
-    description: "Close a task by completing or deleting it. Cannot complete tasks with incomplete children. Completed tasks are locked and cannot be modified.",
+    description: "Close a task by completing or deleting it. The indexOrTitle must be an exact task index (e.g., '1.2') or exact task title that was previously registered. Cannot complete tasks with incomplete children. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
-      "Use task_close immediately after finishing work on a task",
-      "Use task_close only for tasks previously created with task_create_root, task_extend_root, or task_breakdown",
-      "The indexOrTitle parameter must be a registered task identifier, not a description of completed work",
+      "Use task_close with mode=complete immediately after finishing work on a registered task",
+      "Use task_close with mode=delete to remove an unwanted task from the plan",
     ],
     parameters: TaskCloseParams,
 
@@ -490,6 +489,8 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Use task_list to check current progress before starting work",
       "Use task_list when unsure which task to work on next",
+      "Use task_list focus mode to see the current working path",
+      "Use task_list full mode to see all tasks in the plan",
     ],
     parameters: TaskListParams,
 
