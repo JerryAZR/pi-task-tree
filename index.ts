@@ -437,6 +437,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Use task_close with mode=complete immediately after finishing work on a registered task",
       "Use task_close with mode=delete to remove an unwanted task from the plan",
+      "Do not use task_close with a summary or description of work completed",
     ],
     parameters: TaskCloseParams,
 
@@ -488,9 +489,6 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
       "Use task_list to check current progress before starting work",
-      "Use task_list when unsure which task to work on next",
-      "Use task_list focus mode to see the current working path",
-      "Use task_list full mode to see all tasks in the plan",
     ],
     parameters: TaskListParams,
 
