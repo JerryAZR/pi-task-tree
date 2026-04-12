@@ -266,9 +266,8 @@ export default function (pi: ExtensionAPI) {
     description: "Create a new named task list (root). Each root is a separate workspace.",
     promptSnippet: "Create a new task list for planning",
     promptGuidelines: [
-      "Use task_create_root to start a new planning session (not task_extend_root)",
-      "Provide a descriptive title for the plan",
-      "Include initial tasks to break down the work"
+      "Use task_create_root when starting new work or creating a new plan",
+      "Prefer task_create_root over task_extend_root unless actively continuing an existing plan",
     ],
     parameters: TaskCreateRootParams,
 
@@ -307,9 +306,8 @@ export default function (pi: ExtensionAPI) {
     description: "Add tasks to the root level of the active plan. Use this to extend an existing plan.",
     promptSnippet: "Add tasks to an existing plan",
     promptGuidelines: [
-      "Use task_extend_root only when adding to an existing active plan",
-      "Requires an active task list (created with task_create_root)",
-      "Use task_breakdown to add subtasks under specific tasks"
+      "Use task_extend_root only when actively continuing an existing plan",
+      "Do not use task_extend_root for new work - use task_create_root instead",
     ],
     parameters: TaskAddTaskParams,
 
@@ -345,9 +343,8 @@ export default function (pi: ExtensionAPI) {
     description: "Add subtasks under an existing parent task. Requires an active task list.",
     promptSnippet: "Break down tasks into subtasks",
     promptGuidelines: [
-      "Use task_breakdown to decompose complex tasks into smaller steps",
-      "Specify the parent task index to add subtasks under",
-      "Tasks are auto-indexed based on position"
+      "Use task_breakdown when decomposing a specific task into subtasks",
+      "Use task_breakdown instead of task_extend_root when adding children to an existing task",
     ],
     parameters: TaskBreakdownParams,
 
@@ -388,7 +385,7 @@ export default function (pi: ExtensionAPI) {
     description: "Get task details by index or title",
     promptSnippet: "Get the details of a planned task",
     promptGuidelines: [
-      "Use task_get to retrieve details of a planned task for execution or review"
+      "Use task_get when you need context about a specific task before working on it",
     ],
     parameters: TaskGetParams,
 
@@ -410,9 +407,8 @@ export default function (pi: ExtensionAPI) {
     description: "Update task title or description. Cannot update completed or deleted tasks.",
     promptSnippet: "Update title or description of a planned task",
     promptGuidelines: [
-      "Use task_update to update the description or title of a pending task",
-      "Cannot update completed or deleted tasks",
-      "For evolving requirements, create new tasks instead of modifying completed ones"
+      "Use task_update only for pending tasks (not completed or deleted)",
+      "Do not use task_update to modify completed tasks - create new tasks instead",
     ],
     parameters: TaskUpdateParams,
 
@@ -439,11 +435,9 @@ export default function (pi: ExtensionAPI) {
     description: "Close a task by completing or deleting it. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
-      "Mark tasks complete as soon as you finish working on them",
-      "Use 'complete' to mark a finished task done",
-      "Use 'delete' to remove a task and all its children",
-      "Cannot complete a task that has incomplete children",
-      "Completed tasks are locked - use task_extend_root or task_breakdown to add new tasks for changes"
+      "Use task_close immediately after finishing work on a task",
+      "Use task_close only for tasks previously created with task_create_root, task_extend_root, or task_breakdown",
+      "The indexOrTitle parameter must be a registered task identifier, not a description of completed work",
     ],
     parameters: TaskCloseParams,
 
@@ -494,9 +488,8 @@ export default function (pi: ExtensionAPI) {
     description: "Show tasks in focus (default) or full mode. Focus shows working path, full shows all.",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
-      "Use task_list to understand progress on this project",
-      "Focus (default): Shows working path (first incomplete at each level)",
-      "Full: Shows all tasks"
+      "Use task_list to check current progress before starting work",
+      "Use task_list when unsure which task to work on next",
     ],
     parameters: TaskListParams,
 
