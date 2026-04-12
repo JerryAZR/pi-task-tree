@@ -1,6 +1,6 @@
 {
   "name": "@jerryan/pi-task-tree",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Nested task list with completed tracking and focus mode for pi",
   "main": "index.ts",
   "scripts": {
