@@ -16,6 +16,17 @@ Or add to `~/.pi/agent/settings.json`:
 }
 ```
 
+## ⚠️ Context Cost Warning
+
+This extension is **relatively heavy** compared to a simple flat todo list. It exposes 7 tools with rich parameters (hierarchical indexes, insert modes, soft deletes, etc.) that exist for functional completeness but are **rarely used by agents in practice**. Most agent workflows only need a flat list of tasks, yet the full schema descriptions sit in the system prompt on every turn.
+
+If you typically use pi for short, interactive coding sessions rather than long-running autonomous agent work, consider whether this extension is worth the context cost. You may prefer to:
+
+- **Not install it globally** — only add it to specific projects that need complex planning
+- **Use a simpler flat todo** for basic task tracking (e.g., the built-in `todo.ts` example or a lightweight alternative)
+
+Reserve `pi-task-tree` for sessions where you expect deep hierarchical planning, subtask breakdowns, and long agent runs where the tree structure genuinely adds value.
+
 ## Features
 
 - **Hierarchical tasks**: Break down work into parent tasks and subtasks
