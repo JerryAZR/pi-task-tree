@@ -1,6 +1,6 @@
 {
   "name": "@jerryan/pi-task-tree",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Nested task list with completed tracking and focus mode for pi",
   "main": "index.ts",
   "scripts": {
@@ -41,8 +41,8 @@
     "extensions": ["./index.ts"]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
     "@sinclair/typebox": "*"
   }
 }

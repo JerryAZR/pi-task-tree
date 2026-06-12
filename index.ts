@@ -3,7 +3,7 @@
  * Model: completed/deleted flags, parent completion rules, [⏳] derived display
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { parseArgs } from "node:util";
 
@@ -252,6 +252,14 @@ export default function (pi: ExtensionAPI) {
     return String(input).trim();
   }
 
+  // IMPORTANT: promptGuidelines are aggregated from ALL active tools and displayed
+  // as a flat bullet list in the system prompt's "Guidelines" section.
+  // They are NOT automatically prefixed with the tool name or grouped by tool.
+  // Each guideline must be SELF-CONTAINED and make sense standalone.
+  // AVOID vague references like "This tool" - use explicit tool names instead.
+  // BAD:  "Use this tool to start planning"
+  // GOOD: "Use task_create_root to start a new planning session"
+  //
   // task_create_root
   pi.registerTool({
     name: "task_create_root",
@@ -259,9 +267,8 @@ export default function (pi: ExtensionAPI) {
     description: "Create a new named task list (root). Each root is a separate workspace.",
     promptSnippet: "Create a new task list for planning",
     promptGuidelines: [
-      "Use this tool to start a new planning session",
-      "Provide a descriptive title for the plan",
-      "Include initial tasks to break down the work"
+      "Use task_create_root when starting new work or creating a new plan",
+      "Do not use task_create_root when an active plan exists to continue",
     ],
     parameters: TaskCreateRootParams,
 
@@ -293,16 +300,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_extend_root
+  // task_extend_root - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_extend_root",
     label: "Extend Root",
     description: "Add tasks to the root level of the active plan. Use this to extend an existing plan.",
     promptSnippet: "Add tasks to an existing plan",
     promptGuidelines: [
-      "Use this tool to add new tasks to the root level of the active plan",
-      "Requires an active task list (created with task_create_root)",
-      "Use task_breakdown to add subtasks under specific tasks"
+      "Use task_extend_root only when actively continuing an existing plan",
+      "Do not use task_extend_root when starting new work",
     ],
     parameters: TaskAddTaskParams,
 
@@ -331,16 +337,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_breakdown
+  // task_breakdown - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_breakdown",
     label: "Task Breakdown",
     description: "Add subtasks under an existing parent task. Requires an active task list.",
     promptSnippet: "Break down tasks into subtasks",
     promptGuidelines: [
-      "Use this tool to break down complex tasks into smaller steps",
-      "Specify the parent task index to add subtasks under",
-      "Tasks are auto-indexed based on position"
+      "Use task_breakdown when decomposing a specific task into subtasks",
+      "Use task_breakdown when adding children to an existing parent task",
     ],
     parameters: TaskBreakdownParams,
 
@@ -374,14 +379,14 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_get
+  // task_get - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_get",
     label: "Task Get",
     description: "Get task details by index or title",
     promptSnippet: "Get the details of a planned task",
     promptGuidelines: [
-      "Use this tool to retrieve details of a planned task for execution or review"
+      "Use task_get when you need context about a specific task before working on it",
     ],
     parameters: TaskGetParams,
 
@@ -396,16 +401,15 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_update
+  // task_update - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_update",
     label: "Task Update",
     description: "Update task title or description. Cannot update completed or deleted tasks.",
     promptSnippet: "Update title or description of a planned task",
     promptGuidelines: [
-      "Use this tool to update the description or title of a pending task",
-      "Cannot update completed or deleted tasks",
-      "For evolving requirements, create new tasks instead of modifying completed ones"
+      "Use task_update only for pending tasks (not completed or deleted)",
+      "Do not use task_update to modify completed tasks - create new tasks instead",
     ],
     parameters: TaskUpdateParams,
 
@@ -425,18 +429,16 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_close
+  // task_close - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_close",
     label: "Task Close",
-    description: "Close a task by completing or deleting it. Completed tasks are locked and cannot be modified.",
+    description: "Close a task by completing or deleting it. The indexOrTitle must be an exact task index (e.g., '1.2') or exact task title that was previously registered. Cannot complete tasks with incomplete children. Completed tasks are locked and cannot be modified.",
     promptSnippet: "Mark a task as completed or delete it",
     promptGuidelines: [
-      "Mark tasks complete as soon as you finish working on them",
-      "Use 'complete' to mark a finished task done",
-      "Use 'delete' to remove a task and all its children",
-      "Cannot complete a task that has incomplete children",
-      "Completed tasks are locked - use task_extend_root or task_breakdown to add new tasks for changes"
+      "Use task_close with mode=complete immediately after finishing work on a registered task",
+      "Use task_close with mode=delete to remove an unwanted task from the plan",
+      "Do not use task_close with a summary or description of work completed",
     ],
     parameters: TaskCloseParams,
 
@@ -480,16 +482,14 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // task_list
+  // task_list - Guidelines must be self-contained (see note above)
   pi.registerTool({
     name: "task_list",
     label: "Task List",
     description: "Show tasks in focus (default) or full mode. Focus shows working path, full shows all.",
     promptSnippet: "Show tasks planned for this project",
     promptGuidelines: [
-      "Use this tool to understand the progress made in this project",
-      "Focus (default): Shows working path (first incomplete at each level)",
-      "Full: Shows all tasks"
+      "Use task_list when unsure about the current plan state",
     ],
     parameters: TaskListParams,
 
